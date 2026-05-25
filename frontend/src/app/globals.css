@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Force strict brutalist style - zero rounded corners everywhere! */
+* {
+  border-radius: 0px !important;
+}
+
+body {
+  background-color: #000000;
+  color: #ffffff;
+  font-family: var(--font-mono);
+  overflow-x: hidden;
+}
+
+/* Custom terminal-style scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0c0c0c;
+  border-left: 1px solid #1f1f1f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f3f;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f59e0b; /* Amber accent on hover */
+}
+
+/* Custom animations for high-contrast alerts and scanlines */
+@keyframes pulse-fast {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-pulse-fast {
+  animation: pulse-fast 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Emulated scanline overlays for terminal CRT vibe */
+.terminal-grid {
+  background-image: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+  background-size: 100% 4px;
+}
