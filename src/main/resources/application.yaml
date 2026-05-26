@@ -26,7 +26,7 @@ spring:
       # matches your entities but NEVER touches the schema itself.
       # Flyway owns the schema. Hibernate just validates.
       # Never use 'create' or 'create-drop' in a real project.
-      ddl-auto: validate
+      ddl-auto: update # For Phase 1 dev only. Switch to 'validate' once your schema is stable.
     show-sql: false # Set to true temporarily when debugging a query
     properties:
       hibernate:
@@ -78,6 +78,14 @@ spring:
         # the sequence number. No duplicate messages even on retry.
         enable.idempotence: true
         max.in.flight.requests.per.connection: 5
+
+# ── Razorpay ──────────────────────────────────────────────────────────────────
+razorpay:
+  key:
+    id: rzp_test_RX2NsQZbugMgmp
+    secret: Dd5YruX6VDucalbbVyQHDty7
+  webhook:
+    secret: rzp_test_placeholder_webhook_secret
 
 # ── Server ────────────────────────────────────────────────────────────────────
 server:

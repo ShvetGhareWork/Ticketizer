@@ -2,35 +2,46 @@
 -- schema.sql
 -- =============================================================================
 
+-- ── Idempotency Clean Slate Drops ─────────────────────────────────────────────
+DROP TABLE IF EXISTS bookings CASCADE;
+DROP TABLE IF EXISTS seats CASCADE;
+DROP TABLE IF EXISTS shows CASCADE;
+DROP TABLE IF EXISTS events CASCADE;
+DROP TYPE IF EXISTS seat_status CASCADE;
+DROP TYPE IF EXISTS booking_status CASCADE;
+
 -- ── PostgreSQL ENUM Types ─────────────────────────────────────────────────────
 CREATE TYPE seat_status AS ENUM ('AVAILABLE', 'LOCKED', 'BOOKED');
 CREATE TYPE booking_status AS ENUM ('PENDING', 'CONFIRMED', 'EXPIRED', 'CANCELLED');
 
 -- ── events ────────────────────────────────────────────────────────────────────
 CREATE TABLE events (
-    id          BIGSERIAL    PRIMARY KEY,
-    name        VARCHAR(255) NOT NULL,
-    description TEXT
+    id               BIGSERIAL    PRIMARY KEY,
+    title            VARCHAR(255) NOT NULL,
+    description      TEXT,
+    genre            VARCHAR(255),
+    duration_minutes INT
 );
 
 -- ── shows ─────────────────────────────────────────────────────────────────────
 CREATE TABLE shows (
-    id             BIGSERIAL    PRIMARY KEY,
-    event_id       BIGINT       NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    venue          VARCHAR(255) NOT NULL,
-    start_time     TIMESTAMPTZ  NOT NULL,
-    end_time       TIMESTAMPTZ  NOT NULL,
-    total_capacity INT          NOT NULL CHECK (total_capacity > 0)
+    id             BIGSERIAL      PRIMARY KEY,
+    event_id       BIGINT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    venue          VARCHAR(255)   NOT NULL,
+    start_time     TIMESTAMPTZ    NOT NULL,
+    end_time       TIMESTAMPTZ    NOT NULL,
+    total_capacity INT            NOT NULL CHECK (total_capacity > 0),
+    price          NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    hall_name      VARCHAR(255)
 );
 
 -- ── seats ─────────────────────────────────────────────────────────────────────
 CREATE TABLE seats (
-    id             BIGSERIAL      PRIMARY KEY,
-    show_id        BIGINT         NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
-    seat_number    VARCHAR(20)    NOT NULL,
-    row_identifier VARCHAR(10)    NOT NULL,
-    price          NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
-    status         seat_status    NOT NULL DEFAULT 'AVAILABLE'
+    id          BIGSERIAL   PRIMARY KEY,
+    show_id     BIGINT      NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
+    seat_number VARCHAR(20) NOT NULL,
+    status      seat_status NOT NULL DEFAULT 'AVAILABLE',
+    CONSTRAINT uq_show_seat UNIQUE (show_id, seat_number)
 );
 
 -- ── COMPOSITE INDEX: Optimizing Cache Warmup & Expiration Reconciliation ──────
@@ -48,6 +59,5 @@ CREATE TABLE bookings (
     version           BIGINT         NOT NULL DEFAULT 0
 );
 
--- ── UNIQUE INDEX: Last-Resort Idempotency Guard ──────────────────────────────
-CREATE UNIQUE INDEX idx_booking_user_show ON bookings(user_id, show_id)
-    WHERE status != 'CANCELLED';
+-- ── INDEX: Fast User Query Performance Guard ──────────────────────────────────
+CREATE INDEX idx_booking_user_show ON bookings(user_id, show_id);

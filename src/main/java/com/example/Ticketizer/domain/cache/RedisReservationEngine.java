@@ -7,7 +7,12 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
+import com.example.Ticketizer.domain.dto.SeatStateResponse;
+
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -62,6 +67,36 @@ public boolean releaseSeat(Long showId, Long seatId) {
 
     return result != null && result == 1L;
 }
+public List<SeatStateResponse> getRealTimeSeatStatuses(Long showId) {
+    String availableSetKey = "show:" + showId + ":available_seats";
+    String lockedHashKey =  "show:" + showId + ":locked_seats";
 
+    // 1. Fetch all available seat IDs and locked seat keys in parallel lookups
+    Set<String> availableSeats = redisTemplate.opsForSet().members(availableSetKey);
+    Set<Object> lockedSeats = redisTemplate.opsForHash().keys(lockedHashKey);
+
+    Set<Long> availableIds = availableSeats != null ? availableSeats.stream().map(Long::valueOf).collect(Collectors.toSet()) : Set.of();
+    Set<Long> lockedIds = lockedSeats != null ? lockedSeats.stream().map(k -> Long.valueOf((String) k)).collect(Collectors.toSet()) : Set.of();
+
+    List<SeatStateResponse> matrix = new ArrayList<>(200);
+
+    // 2. Compute status maps for the entire physical layout (Seats 1 to 200)
+    for (int id = 1; id <= 200; id++) {
+        long seatId = id;
+        String status;
+
+        if (availableIds.contains(seatId)) {
+            status = "AVAILABLE";
+        } else if (lockedIds.contains(seatId)) {
+            status = "LOCKED";
+        } else {
+            status = "BOOKED"; // Evicted from both sets means payment was finalized
+        }
+
+        matrix.add(new SeatStateResponse(seatId, status));
+    }
+
+    return matrix;
+}
     
 }

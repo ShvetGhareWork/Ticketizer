@@ -1,14 +1,11 @@
 package com.example.Ticketizer.domain.entity;
 
-import com.example.Ticketizer.domain.entity.BookingStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "bookings", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"user_id", "show_id"})
-})
+@Table(name = "bookings")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -25,7 +22,6 @@ public class Booking {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    // True object mapping satisfies the pre-existing Show.java bidirectional contract
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "show_id", nullable = false)
     private Show show;
@@ -43,6 +39,8 @@ public class Booking {
 
     @Version
     @Column(name = "version")
-    private Long version; // Managed automatically by Hibernate for optimistic concurrency control
+    private Long version;
+
+    @Column(name = "qr_code_payload", columnDefinition = "TEXT")
+    private String qrCodePayload;
 }
-    

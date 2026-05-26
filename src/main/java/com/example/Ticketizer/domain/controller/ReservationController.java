@@ -1,10 +1,13 @@
 package com.example.Ticketizer.domain.controller;
 
 import com.example.Ticketizer.domain.dto.ReservationEvent;
+import com.example.Ticketizer.domain.dto.SeatStateResponse;
 import com.example.Ticketizer.domain.cache.RedisReservationEngine;
 import com.example.Ticketizer.domain.cache.InventoryWarmUpWorker;
 import com.example.Ticketizer.domain.entity.Seat;
 import com.example.Ticketizer.domain.entity.SeatStatus;
+import com.example.Ticketizer.domain.dto.ReservationResponse;
+// import com.example.Ticketizer.domain.service.ReservationService;
 import com.example.Ticketizer.domain.repository.BookingRepository;
 import com.example.Ticketizer.domain.repository.SeatRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +38,7 @@ public class ReservationController {
     private final BookingRepository bookingRepository;
     private final SeatRepository seatRepository;
     private final InventoryWarmUpWorker inventoryWarmUpWorker;
+    // private final ReservationService reservationService;
     
     private static final String TOPIC = "ticket-reservations";
 
@@ -61,9 +65,8 @@ public class ReservationController {
             Map<String, Object> seatMap = new java.util.HashMap<>();
             seatMap.put("id", String.valueOf(seat.getId()));
             seatMap.put("seatNumber", seat.getSeatNumber());
-            seatMap.put("row", seat.getRowIdentifier());
             seatMap.put("status", status);
-            seatMap.put("price", seat.getPrice());
+            seatMap.put("showId", String.valueOf(seat.getShow().getId()));
             return seatMap;
         }).collect(Collectors.toList());
         
@@ -73,50 +76,48 @@ public class ReservationController {
     /**
      * Secures a lock lease on a seat.
      */
-    @PostMapping("/show/{showId}/seat/{seatId}")
-    public ResponseEntity<?> processReservation(
-            @PathVariable Long showId,
-            @PathVariable Long seatId,
-            @RequestParam Long userId) {
+@PostMapping("/show/{showId}/seat/{seatId}")
+public ResponseEntity<?> reserveSeat(
+        @PathVariable Long showId,
+        @PathVariable Long seatId,
+        org.springframework.security.core.Authentication authentication) {
 
-        // 1. Evaluate reservation availability atomically within Redis memory loop
-        boolean success = reservationEngine.attemptReservation(showId, seatId, userId);
+    // Extract the cryptographically validated identity context straight from principal token
+    Long securedUserId = (Long) authentication.getPrincipal();
+    
+    log.info("Secure fast-path ingress reservation execution loop triggered by User: {}", securedUserId);
 
-        if (success) {
-            String bookingId = UUID.randomUUID().toString();
-            
-            ReservationEvent event = new ReservationEvent(
-                    bookingId,
-                    showId,
-                    seatId,
-                    userId,
-                    Instant.now()
-            );
-
-            // 2. Fire payload into the asynchronous Kafka broker stream
-            kafkaTemplate.send(TOPIC, String.valueOf(showId), event)
-                .whenComplete((result, ex) -> {
-                    if (ex == null) {
-                        log.info("Dispatched event successfully to partition [{}] for booking: {}", 
-                                result.getRecordMetadata().partition(), bookingId);
-                    } else {
-                        log.error("Critical: Failed to stream booking event: {}", bookingId, ex);
-                    }
-                });
-
-            return ResponseEntity.ok(Map.of(
-                    "status", "PENDING_CONFIRMATION",
-                    "bookingId", bookingId,
-                    "message", "Seat allocation secured. Order processing initialized."
-            ));
-        } else {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                    "status", "REJECTED",
-                    "message", "Seat unavailable or already locked."
-            ));
-        }
+    // 1. Attempt Redis Lock
+    boolean locked = reservationEngine.attemptReservation(showId, seatId, securedUserId);
+    if (!locked) {
+        log.warn("Fast-path block: Seat {} for Show {} is already LOCKED or BOOKED.", seatId, showId);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+            "status", "CONFLICT",
+            "message", "Seat is already locked or booked."
+        ));
     }
 
+    // 2. Generate Unique Booking Reference UUID
+    String bookingId = UUID.randomUUID().toString();
+
+    // 3. Dispatch Async Reservation Event to Kafka
+    ReservationEvent event = new ReservationEvent(bookingId, showId, seatId, securedUserId, Instant.now());
+    
+    try {
+        kafkaTemplate.send(TOPIC, bookingId, event);
+        log.info("Async Event Dispatched: Kafka topic: {}, Booking: {}, Seat: {}", TOPIC, bookingId, seatId);
+    } catch (Exception ex) {
+        log.error("Kafka publish failure. Rollback Redis lock for Seat: {}", seatId, ex);
+        reservationEngine.releaseSeat(showId, seatId);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+            "status", "ERROR",
+            "message", "Failed to dispatch reservation event."
+        ));
+    }
+
+    // 4. Return Immediate High-Speed Response
+    return ResponseEntity.ok(new ReservationResponse(bookingId, "PENDING_CONFIRMATION"));
+}
     /**
      * Clears all relational bookings, resets seat statuses to AVAILABLE in PostgreSQL,
      * deletes active Redis locks, and restores the available sets in Redis cache.
@@ -151,5 +152,10 @@ public class ReservationController {
             "status", "SUCCESS",
             "message", "Database successfully flushed. Redis inventory reset to 200 AVAILABLE seats."
         ));
+    }
+
+    public ResponseEntity<List<SeatStateResponse>> getRealTimeSeatStatuses(@PathVariable Long showId) {
+        List<SeatStateResponse> seatStatuses = reservationEngine.getRealTimeSeatStatuses(showId);
+        return ResponseEntity.ok(seatStatuses);
     }
 }

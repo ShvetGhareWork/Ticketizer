@@ -35,8 +35,7 @@ public class ReservationJanitor {
 
     @Scheduled(fixedRate = 10000) 
     public void sweepExpiredReservations() {
-        Instant expirationThreshold = Instant.now().minus(300, ChronoUnit.SECONDS); 
-
+        Instant expirationThreshold = Instant.now().minus(300, ChronoUnit.SECONDS);
         List<Booking> expiredBookings = bookingRepository.findByStatusAndCreatedAtBefore(
                 BookingStatus.PENDING, 
                 expirationThreshold

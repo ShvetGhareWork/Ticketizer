@@ -52,4 +52,9 @@ public class Show {
     @OneToMany(mappedBy = "show", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
     private List<Booking> bookings = new ArrayList<>();
+
+    @Column(nullable = false)
+    private Double price;
+
+    private String hallName;
 }

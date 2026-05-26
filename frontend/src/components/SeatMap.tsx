@@ -2,40 +2,23 @@
 
 import React, { useRef, useEffect } from 'react';
 import { Layers } from 'lucide-react';
+import { useApp } from '@/context/AppContext';
 
-export type SeatStatus = 'AVAILABLE' | 'LOCKED' | 'BOOKED';
-
-export interface Seat {
-  id: string; // e.g. "A12"
-  row: string; // "A" - "J"
-  number: number; // 1 - 20
-  status: SeatStatus;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MEMOIZED SEAT NODE COMPONENT
-// Custom equality function guarantees a SeatNode only re-renders if its specific
-// state (status, selection) changes.
-// ─────────────────────────────────────────────────────────────────────────────
 interface SeatNodeProps {
-  id: string;
+  id: string; // Seat Label (e.g. "A12")
+  dbId: string; // Database ID (e.g. "12")
   row: string;
   number: number;
-  status: SeatStatus;
+  status: 'AVAILABLE' | 'LOCKED' | 'BOOKED';
   isSelected: boolean;
   onClick: (id: string) => void;
   renderTrackerRef: React.MutableRefObject<number>;
 }
 
 const SeatNode = React.memo(
-  function SeatNode({ id, row, number, status, isSelected, onClick, renderTrackerRef }: SeatNodeProps) {
-    // Increment the render tracker whenever this node renders to measure performance
+  function SeatNode({ id, dbId, row, number, status, isSelected, onClick, renderTrackerRef }: SeatNodeProps) {
     renderTrackerRef.current += 1;
 
-    // Determine colors strictly based on the high-contrast cinema noir brutalist theme:
-    // - AVAILABLE: Thin charcoal border, dark gray background, white text on hover.
-    // - LOCKED (Amber): Amber background, black text, pointer-events disabled.
-    // - BOOKED (Crimson): Low-contrast dark crimson background, muted gray text, line-through.
     let statusClasses = '';
     
     switch (status) {
@@ -43,13 +26,18 @@ const SeatNode = React.memo(
         statusClasses = 'bg-red-950/45 text-red-500 border-red-950/80 cursor-not-allowed pointer-events-none line-through';
         break;
       case 'LOCKED':
-        statusClasses = 'bg-[#f59e0b] text-black border-[#f59e0b] cursor-not-allowed pointer-events-none font-extrabold';
+        if (isSelected) {
+          // Current user's selected/leased seat (Amber pulsing)
+          statusClasses = 'bg-[#d97706] text-black border-[#d97706] animate-pulse font-extrabold cursor-pointer';
+        } else {
+          // Locked by another user (Static Amber)
+          statusClasses = 'bg-[#d97706]/20 text-[#d97706] border-[#d97706]/40 cursor-not-allowed pointer-events-none font-bold';
+        }
         break;
       case 'AVAILABLE':
       default:
         if (isSelected) {
-          // If selected but waiting, it is treated as optimistically locked (turns amber)
-          statusClasses = 'bg-[#f59e0b] text-black border-[#f59e0b] animate-pulse font-extrabold';
+          statusClasses = 'bg-[#d97706] text-black border-[#d97706] animate-pulse font-extrabold cursor-pointer';
         } else {
           statusClasses = 'bg-[#121212] hover:bg-white text-neutral-400 hover:text-black border-neutral-800 hover:border-white transition-colors cursor-pointer';
         }
@@ -59,52 +47,40 @@ const SeatNode = React.memo(
     return (
       <button
         onClick={() => onClick(id)}
-        disabled={status !== 'AVAILABLE'}
+        disabled={status === 'BOOKED' || (status === 'LOCKED' && !isSelected)}
         className={`w-full aspect-square border text-[9px] font-mono flex flex-col items-center justify-center select-none font-bold uppercase transition-all duration-75 relative ${statusClasses}`}
-        title={`Seat ${id} (${status})`}
+        title={`Seat ${id} (DB ID: ${dbId}, Status: ${status})`}
       >
         <span>{id}</span>
       </button>
     );
   },
   (prevProps, nextProps) => {
-    // Custom memoization comparator to block unnecessary renders
     return (
       prevProps.status === nextProps.status &&
       prevProps.isSelected === nextProps.isSelected &&
-      prevProps.id === nextProps.id
+      prevProps.id === nextProps.id &&
+      prevProps.dbId === nextProps.dbId
     );
   }
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN SEAT MAP COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
-interface SeatMapProps {
-  seats: Record<string, Seat>;
-  selectedSeatIds: string[];
-  onSelectSeat: (seatId: string) => void;
-  onLogMessage: (type: 'INGRESS' | 'SYSTEM' | 'ERROR' | 'SUCCESS' | 'CONFLICT', message: string) => void;
-}
-
-export default function SeatMap({ seats, selectedSeatIds, onSelectSeat, onLogMessage }: SeatMapProps) {
-  // A ref to count how many individual SeatNodes rendered in this tick
+export default function SeatMap() {
+  const { seats, activeAllocation, selectSeat, addLog } = useApp();
   const renderTracker = useRef<number>(0);
 
   useEffect(() => {
-    // After render completes, check the count and log the memoization benefits
     if (renderTracker.current > 0) {
       if (renderTracker.current === 200) {
-        onLogMessage('SYSTEM', `GRID INITIALIZED: 200 seat nodes rendered successfully.`);
+        addLog('SYSTEM', `GRID HYDRO-COMPACTION: 200 seat vectors rendered to layout layer.`);
       } else {
         const skipped = 200 - renderTracker.current;
-        onLogMessage('SYSTEM', `GRID OPTIMIZATION: Rendered ${renderTracker.current} seat node(s). Skipped ${skipped} inactive nodes via React.memo cache.`);
+        addLog('SYSTEM', `LAYOUT OPTIMIZATION: Rendered ${renderTracker.current} nodes. Memo skipped ${skipped} static cells.`);
       }
-      renderTracker.current = 0; // Reset
+      renderTracker.current = 0;
     }
   });
 
-  // Rows A through J, columns 1 to 20
   const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
   const columns = Array.from({ length: 20 }, (_, i) => i + 1);
 
@@ -133,18 +109,19 @@ export default function SeatMap({ seats, selectedSeatIds, onSelectSeat, onLogMes
             {rows.map((row) =>
               columns.map((col) => {
                 const seatId = `${row}${col}`;
-                const seat = seats[seatId] || { id: seatId, row, number: col, status: 'AVAILABLE' };
-                const isSelected = selectedSeatIds.includes(seatId);
+                const seat = seats[seatId] || { id: '', row, number: col, status: 'AVAILABLE' };
+                const isSelected = activeAllocation !== null && (activeAllocation.seatLabel === seatId || !!activeAllocation.seatLabels?.includes(seatId));
                 
                 return (
                   <SeatNode
                     key={seatId}
                     id={seatId}
+                    dbId={seat.id}
                     row={row}
                     number={col}
                     status={seat.status}
                     isSelected={isSelected}
-                    onClick={onSelectSeat}
+                    onClick={selectSeat}
                     renderTrackerRef={renderTracker}
                   />
                 );
@@ -163,7 +140,7 @@ export default function SeatMap({ seats, selectedSeatIds, onSelectSeat, onLogMes
             <span className="text-neutral-500 uppercase">AVAILABLE ({availableCount})</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 border border-[#f59e0b] bg-[#f59e0b] block"></span>
+            <span className="w-3.5 h-3.5 border border-[#d97706] bg-[#d97706]/20 block"></span>
             <span className="text-neutral-500 uppercase">LOCKED ({lockedCount})</span>
           </div>
           <div className="flex items-center gap-2">

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppProvider } from "@/context/AppContext";
 
 export const metadata: Metadata = {
   title: "TICKETFLOW // TRANSACTIONAL CORE GATEWAY",
@@ -17,9 +18,11 @@ export default function RootLayout({
         <div className="relative min-h-screen flex flex-col terminal-grid">
           {/* CRT Scanline Overlay Effect */}
           <div className="pointer-events-none fixed inset-0 z-50 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.15)_100%)]" />
-          <main className="flex-1 flex flex-col p-4 md:p-6 lg:p-8">
-            {children}
-          </main>
+          <AppProvider>
+            <main className="flex-1 flex flex-col p-4 md:p-6 lg:p-8">
+              {children}
+            </main>
+          </AppProvider>
         </div>
       </body>
     </html>

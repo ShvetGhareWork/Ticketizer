@@ -20,6 +20,7 @@ public class PaymentSettlementService {
     private final BookingRepository bookingRepository;
     private final SeatRepository seatRepository;
     private final StringRedisTemplate redisTemplate;
+    private final QrCodeGeneratorService qrCodeGeneratorService;
 
     @Transactional
     public void fulfillOrder(PaymentCallbackRequest request) {
@@ -58,6 +59,20 @@ public class PaymentSettlementService {
             booking.setStatus(BookingStatus.CONFIRMED);
             booking.getSeat().setStatus(SeatStatus.BOOKED);
             
+            // Compile ticket structural parameters into a lightweight verification manifest string
+            String ticketManifest = String.format(
+                    "{\"ref\":\"%s\",\"showId\":%d,\"seat\":\"%s\",\"userId\":%d,\"timestamp\":\"%s\"}",
+                    booking.getBookingReference(),
+                    booking.getShow().getId(),
+                    booking.getSeat().getSeatNumber(),
+                    booking.getUserId(),
+                    java.time.Instant.now().toString()
+            );
+
+            // Generate secure Base64 image layout data mapping
+            String base64QrImage = qrCodeGeneratorService.generateQrCodeBase64(ticketManifest);
+            booking.setQrCodePayload(base64QrImage); // Persist directly into the table context
+            
             bookingRepository.save(booking);
             seatRepository.save(booking.getSeat());
 
@@ -65,7 +80,7 @@ public class PaymentSettlementService {
             String lockedHashKey = "show:" + booking.getShow().getId() + ":locked_seats";
             redisTemplate.opsForHash().delete(lockedHashKey, String.valueOf(booking.getSeat().getId()));
             
-            log.info("State convergence complete. Booking reference {} successfully CONFIRMED.", request.bookingReference());
+            log.info("State convergence complete. Secure entry QR token appended to booking reference {}.", booking.getBookingReference());
         } else {
             // Sad Path: Gateway reports payment failure. Delegate to clear up operations
             log.warn("Payment failed for reference {}. Releasing locked slots back to game loops.", request.bookingReference());

@@ -5,19 +5,17 @@ import com.example.Ticketizer.domain.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
-// CommandLineRunner: Spring calls run() after the application context is fully
-// loaded but before serving any HTTP requests. Perfect for seeding.
-//
-// The guard `if (eventRepository.count() > 0) return` makes this idempotent —
-// restart the app a hundred times, you still get exactly one seeded dataset.
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -26,69 +24,98 @@ public class DataSeeder implements CommandLineRunner {
     private final EventRepository eventRepository;
     private final ShowRepository showRepository;
     private final SeatRepository seatRepository;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
-    public void run(String... args) {
+    @Transactional
+    public void run(String... args) throws Exception {
         if (eventRepository.count() > 0) {
-            log.info("Database already seeded — skipping.");
+            log.info("DataSeeder: Core storage structures contain existing matrices. Skipping generation loop.");
             return;
         }
 
-        log.info("Seeding test data...");
+        log.info("DataSeeder: Initializing raw event, show, and cache-pipelined inventory blocks...");
 
-        // ── Create the event ──────────────────────────────────────────────────
-        Event event = Event.builder()
-                .name("IPL Final 2026 - MI vs CSK")
-                .description("The most anticipated cricket match of the year. " +
-                             "Mumbai Indians vs Chennai Super Kings at Wankhede.")
+        // 1. Seed Core Events
+        Event movieEvent = Event.builder()
+                .title("Inception (Re-Release)")
+                .genre("Sci-Fi / Thriller")
+                .description("A thief who steals corporate secrets through the use of dream-sharing technology.")
+                .durationMinutes(148)
                 .build();
-        event = eventRepository.save(event);
+        eventRepository.save(movieEvent);
 
-        // ── Create a show 7 days from now ─────────────────────────────────────
-        OffsetDateTime showStart = OffsetDateTime.now(ZoneOffset.UTC)
-                .plusDays(7)
-                .withHour(19)
-                .withMinute(30)
-                .withSecond(0)
-                .withNano(0);
+        // ... Inside your DataSeeder.java run() method, modify the Show builders:
 
-        Show show = Show.builder()
-                .event(event)
-                .venue("Wankhede Stadium, Mumbai")
-                .startTime(showStart)
-                .endTime(showStart.plusHours(5))
-                .totalCapacity(200)
-                .build();
-        show = showRepository.save(show);
+Show eveningShow = Show.builder()
+        .event(movieEvent)
+        .startTime(LocalDateTime.of(2026, 6, 1, 18, 0).atOffset(ZoneOffset.UTC))
+        .endTime(LocalDateTime.of(2026, 6, 1, 18, 0).plusMinutes(movieEvent.getDurationMinutes()).atOffset(ZoneOffset.UTC)) // Added field mapping
+        .price(350.00)
+        .venue("Grand Cinema Noir")
+        .totalCapacity(200)
+        .hallName("Screen 1 / IMAX")
+        .build();
 
-        // ── Seed 200 seats: 10 rows × 20 seats ───────────────────────────────
-        // Rows A & B: premium (₹5000). C–J: standard (₹2500).
-        // This mirrors real stadium pricing tiers, which is useful for
-        // demonstrating Phase 2's Redis inventory partitioning later.
+Show nightShow = Show.builder()
+        .event(movieEvent)
+        .startTime(LocalDateTime.of(2026, 6, 1, 21, 30).atOffset(ZoneOffset.UTC))
+        .endTime(LocalDateTime.of(2026, 6, 1, 21, 30).plusMinutes(movieEvent.getDurationMinutes()).atOffset(ZoneOffset.UTC)) // Added field mapping
+        .price(400.00)
+        .venue("Grand Cinema Noir")
+        .totalCapacity(200)
+        .hallName("Screen 1 / IMAX")
+        .build();
+
+        showRepository.save(eveningShow);
+        showRepository.save(nightShow);
+
+        // 3. Populate Seats & Execute Atomic Redis Pipelined Generation
+        seedShowSeats(eveningShow);
+        seedShowSeats(nightShow);
+
+        log.info("DataSeeder: Pipeline initialization complete. Production schema stabilized.");
+    }
+
+    private void seedShowSeats(Show show) {
         String[] rows = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"};
-        List<Seat> seats = new ArrayList<>();
+        int seatsPerRow = 20;
+        List<Seat> seatsToSave = new ArrayList<>();
+        List<String> redisSeatIds = new ArrayList<>();
 
+        int globalIdCounter = 1;
         for (String row : rows) {
-            BigDecimal price = (row.equals("A") || row.equals("B"))
-                    ? BigDecimal.valueOf(5000)
-                    : BigDecimal.valueOf(2500);
-
-            for (int num = 1; num <= 20; num++) {
-                seats.add(Seat.builder()
+            for (int col = 1; col <= seatsPerRow; col++) {
+                String seatNumber = row + col;
+                
+                Seat seat = Seat.builder()
                         .show(show)
-                        .rowIdentifier(row)
-                        .seatNumber(row + num)   // e.g. "A1", "B12"
-                        .price(price)
+                        .seatNumber(seatNumber)
                         .status(SeatStatus.AVAILABLE)
-                        .build());
+                        .build();
+                
+                seatsToSave.add(seat);
+                
+                // Store the logical string index for Redis sets (sequential 1-200)
+                redisSeatIds.add(String.valueOf(globalIdCounter++));
             }
         }
+        
+        // Batch insert to PostgreSQL
+        seatRepository.saveAll(seatsToSave);
 
-        // saveAll uses a single transaction and batches the INSERTs for performance.
-        seatRepository.saveAll(seats);
+        // Batch inject inventory tokens into Redis Sets using high-speed pipelining
+        String availableSetKey = "show:" + show.getId() + ":available_seats";
+        
+        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            byte[] rawKey = redisTemplate.getStringSerializer().serialize(availableSetKey);
+            for (String seatId : redisSeatIds) {
+                byte[] rawValue = redisTemplate.getStringSerializer().serialize(seatId);
+                connection.setCommands().sAdd(rawKey, rawValue);
+            }
+            return null;
+        });
 
-        log.info("Seeded event '{}' | show at {} | {} seats",
-                event.getName(), showStart, seats.size());
-        log.info("Show ID: {} — use this in Phase 2 Redis warm-up", show.getId());
+        log.info("Successfully staged 200 relational seat vectors and memory keys for Show ID: {}", show.getId());
     }
 }
