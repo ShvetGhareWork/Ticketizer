@@ -10,6 +10,7 @@ import com.example.Ticketizer.features.booking.ReservationResponse;
 // import com.example.Ticketizer.domain.service.ReservationService;
 import com.example.Ticketizer.features.booking.BookingRepository;
 import com.example.Ticketizer.features.inventory.SeatRepository;
+import com.example.Ticketizer.features.inventory.ShowRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -37,6 +38,7 @@ public class ReservationController {
     private final StringRedisTemplate redisTemplate;
     private final BookingRepository bookingRepository;
     private final SeatRepository seatRepository;
+    private final ShowRepository showRepository;
     private final InventoryWarmUpWorker inventoryWarmUpWorker;
     // private final ReservationService reservationService;
     
@@ -137,20 +139,22 @@ public ResponseEntity<?> reserveSeat(
         }
         seatRepository.saveAll(allSeats);
         
-        // 3. Delete active lock hashes and available lists in Redis
-        Long showId = 1L;
-        String lockedHashKey = "show:" + showId + ":locked_seats";
-        String availableSetKey = "show:" + showId + ":available_seats";
-        redisTemplate.delete(lockedHashKey);
-        redisTemplate.delete(availableSetKey);
-        
-        // 4. Re-run cache warm-up worker to load the newly available seats into Redis Set
-        inventoryWarmUpWorker.executeWarmUp(showId);
+        // 3. Delete active lock hashes and available lists in Redis for all seeded shows
+        List<com.example.Ticketizer.features.inventory.Show> shows = showRepository.findAll();
+        for (com.example.Ticketizer.features.inventory.Show show : shows) {
+            String lockedHashKey = "show:" + show.getId() + ":locked_seats";
+            String availableSetKey = "show:" + show.getId() + ":available_seats";
+            redisTemplate.delete(lockedHashKey);
+            redisTemplate.delete(availableSetKey);
+            
+            // 4. Re-run cache warm-up worker
+            inventoryWarmUpWorker.executeWarmUp(show.getId());
+        }
         
         log.info("ADMIN WEBHOOK: Relational and memory caches successfully flushed to AVAILABLE.");
         return ResponseEntity.ok(Map.of(
             "status", "SUCCESS",
-            "message", "Database successfully flushed. Redis inventory reset to 200 AVAILABLE seats."
+            "message", "Database successfully flushed. Redis inventory reset to AVAILABLE seats across all shows."
         ));
     }
 

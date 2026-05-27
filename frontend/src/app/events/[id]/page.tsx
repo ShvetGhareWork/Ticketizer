@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import { Zap, Ticket, AlertTriangle, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import Header from "@/components/Header";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -35,6 +36,7 @@ export default function EventDetailPage() {
   const [activeTab, setActiveTab] = useState("ABOUT");
   const [eventData, setEventData] = useState<MappedEventDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedShowId, setSelectedShowId] = useState<number>(1);
 
   useEffect(() => {
     if (!id) return;
@@ -150,16 +152,36 @@ export default function EventDetailPage() {
     );
   }
 
+  const isSphere = eventData.venue.toLowerCase().includes("sphere");
+  const baseShowId = isSphere ? 1 : 2;
+
   const shows = [
     {
-      id: 1,
+      id: baseShowId,
       date: eventData.date,
       time: eventData.time,
       location: eventData.city.toUpperCase(),
       price: eventData.priceRange.split(" - ")[0],
       scarcityLabel: "10 SEATS LEFT",
       scarcityColor: "bg-red-600 text-white",
-      selected: true,
+    },
+    {
+      id: baseShowId === 1 ? 2 : 1, // Swap so that they alternate seeded databases
+      date: eventData.date,
+      time: "09:30 PM",
+      location: eventData.city.toUpperCase(),
+      price: eventData.priceRange.split(" - ")[0],
+      scarcityLabel: "FAST FILLING",
+      scarcityColor: "bg-amber-600 text-white",
+    },
+    {
+      id: 3, // Sandbox simulated fallback
+      date: "Mon, 25 May 2026",
+      time: "07:30 PM",
+      location: eventData.city.toUpperCase(),
+      price: eventData.priceRange.split(" - ")[0],
+      scarcityLabel: "AVAILABLE",
+      scarcityColor: "bg-green-600 text-white",
     },
   ];
 
@@ -168,45 +190,7 @@ export default function EventDetailPage() {
       className={`min-h-screen bg-[#F8F9FA] text-gray-900 flex flex-col font-sans ${jakarta.className}`}
     >
       {/* NAVBAR */}
-      <nav className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 bg-white sticky top-0 z-50">
-        <div className="flex items-center gap-8 lg:gap-12">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-extrabold text-lg sm:text-xl tracking-tight text-blue-900"
-          >
-            <div className="w-3 h-3 bg-blue-600"></div>
-            Ticketizer
-          </Link>
-          {/* Desktop Nav Links */}
-          <div className="hidden md:flex gap-8 text-sm font-bold text-gray-600 mt-1">
-            <Link
-              href="/events"
-              className="text-blue-600 border-b-2 border-blue-600 pb-1"
-            >
-              Events
-            </Link>
-            <Link
-              href="/my-bookings"
-              className="hover:text-gray-900 transition-colors"
-            >
-              My Bookings
-            </Link>
-          </div>
-        </div>
-        {/* Auth Buttons */}
-        <div className="flex items-center gap-4 lg:gap-6">
-          <Link
-            href="/auth/login"
-            className="hidden sm:block text-sm font-semibold hover:text-blue-600 transition-colors"
-          >
-            Sign In
-          </Link>
-          <button className="bg-blue-600 text-white px-4 py-2 lg:px-6 lg:py-2.5 text-xs sm:text-sm font-bold rounded hover:bg-blue-700 transition-colors shadow-sm">
-            Get Started
-          </button>
-        </div>
-      </nav>
+      <Header />
 
       {/* HERO BANNER */}
       <section className="relative w-full h-[320px] sm:h-[400px] lg:h-[480px] bg-blue-900 overflow-hidden">
@@ -333,7 +317,12 @@ export default function EventDetailPage() {
                   {shows.map((show) => (
                     <div
                       key={show.id}
-                      className="relative border rounded-lg p-4 cursor-pointer transition-all border-blue-600 bg-blue-50/30"
+                      onClick={() => setSelectedShowId(show.id)}
+                      className={`relative border rounded-lg p-4 cursor-pointer transition-all ${
+                        selectedShowId === show.id
+                          ? "border-blue-600 bg-blue-50/30"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
                     >
                       <div className="flex justify-between items-start mb-4">
                         <div>
@@ -368,7 +357,7 @@ export default function EventDetailPage() {
 
                 {/* Main CTA */}
                 <Link
-                  href={`/events/${id}/shows/1/seats`}
+                  href={`/events/${id}/shows/${selectedShowId}/seats`}
                   onClick={() => {
                     // Store event context in sessionStorage for use on the seats page
                     if (eventData) {
@@ -377,8 +366,8 @@ export default function EventDetailPage() {
                         title: eventData.title,
                         venue: eventData.venue,
                         city: eventData.city,
-                        date: eventData.date,
-                        time: eventData.time,
+                        date: shows.find(s => s.id === selectedShowId)?.date || eventData.date,
+                        time: shows.find(s => s.id === selectedShowId)?.time || eventData.time,
                       }));
                     }
                   }}

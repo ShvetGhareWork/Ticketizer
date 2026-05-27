@@ -20,7 +20,7 @@ public class Seat {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "show_id", nullable = false)
     private Show show;
-
+    
     @Column(name = "seat_number", nullable = false)
     private String seatNumber; // Formatted as row + number e.g., "A1"
 

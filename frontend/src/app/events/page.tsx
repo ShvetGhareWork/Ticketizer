@@ -9,10 +9,10 @@ import {
   Check,
 } from "lucide-react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { useApp } from "@/context/AppContext";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import EventCard from "@/components/EventCard";
+import Header from "@/components/Header";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -64,7 +64,6 @@ export interface MappedEvent {
 }
 
 export default function EventsListing() {
-  const { authToken, logout } = useApp();
   const router = useRouter();
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [events, setEvents] = useState<MappedEvent[]>([]);
@@ -128,86 +127,7 @@ export default function EventsListing() {
       className={`min-h-screen bg-[#F8F9FA] text-gray-900 flex flex-col font-sans selection:bg-blue-100 ${jakarta.className}`}
     >
       {/* NAVBAR */}
-      <nav className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="flex items-center gap-8 lg:gap-12">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-extrabold text-lg sm:text-xl tracking-tight text-blue-900 hover:opacity-90 transition-opacity"
-          >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-blue-600"
-            >
-              <rect x="3" y="8" width="18" height="8" rx="2" ry="2"></rect>
-              <line x1="3" y1="12" x2="21" y2="12"></line>
-              <line x1="8" y1="8" x2="8" y2="16"></line>
-              <line x1="16" y1="8" x2="16" y2="16"></line>
-            </svg>
-            Ticketizer
-          </Link>
-          {/* Desktop Nav Links */}
-          <div className="hidden md:flex gap-8 text-sm font-semibold text-gray-500 mt-1">
-            <Link
-              href="/events"
-              className="text-blue-600 border-b-2 border-blue-600 pb-1"
-            >
-              Events
-            </Link>
-            <Link
-              href="/my-bookings"
-              className="hover:text-gray-900 transition-colors"
-            >
-              My Bookings
-            </Link>
-          </div>
-        </div>
-        {/* Auth Buttons */}
-        <div className="flex items-center gap-4 lg:gap-6">
-          {authToken ? (
-            <>
-              {/* Connected Terminal Status Indicator */}
-              <div className="flex items-center gap-2 bg-[#F1F3F5] px-3.5 py-2 rounded border border-gray-200">
-                <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>
-                <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                  CLIENT ACTIVE
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  logout();
-                  router.push("/auth/login");
-                }}
-                className="bg-red-600 text-white px-4 py-2 lg:px-6 lg:py-2.5 text-xs sm:text-sm font-bold rounded hover:bg-red-700 transition-colors shadow-sm"
-              >
-                Sign Out
-              </button>
-            </>
-          ) : (
-            <>
-              <Link
-                href="/auth/login"
-                className="hidden sm:block text-sm font-semibold hover:text-blue-600 transition-colors"
-              >
-                Sign In
-              </Link>
-              <button
-                onClick={() => router.push("/auth/register")}
-                className="bg-blue-600 text-white px-4 py-2 lg:px-6 lg:py-2.5 text-xs sm:text-sm font-bold rounded hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                Get Started
-              </button>
-            </>
-          )}
-        </div>
-      </nav>
+      <Header />
 
       {/* PAGE CONTENT */}
       <main className="flex-1 max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-12 py-8 lg:py-12">
@@ -374,7 +294,9 @@ export default function EventsListing() {
                 <span className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2">
                   NO EVENTS FOUND
                 </span>
-                <p className="text-xs text-gray-400">Please try refreshing the page or checking your connection.</p>
+                <p className="text-xs text-gray-400">
+                  Please try refreshing the page or checking your connection.
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">

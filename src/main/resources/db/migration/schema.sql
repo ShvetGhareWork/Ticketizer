@@ -1,5 +1,5 @@
 -- =============================================================================
--- schema.sql
+-- schema.sql (Atlas Refactored)
 -- =============================================================================
 
 -- ── Idempotency Clean Slate Drops ─────────────────────────────────────────────
@@ -7,12 +7,12 @@ DROP TABLE IF EXISTS bookings CASCADE;
 DROP TABLE IF EXISTS seats CASCADE;
 DROP TABLE IF EXISTS shows CASCADE;
 DROP TABLE IF EXISTS events CASCADE;
+DROP TABLE IF EXISTS venues CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
-DROP TYPE IF EXISTS seat_status CASCADE;
 DROP TYPE IF EXISTS booking_status CASCADE;
 
 -- ── PostgreSQL ENUM Types ─────────────────────────────────────────────────────
-CREATE TYPE seat_status AS ENUM ('AVAILABLE', 'LOCKED', 'BOOKED');
+-- Note: seat_status is removed. State is now derived from the bookings table.
 CREATE TYPE booking_status AS ENUM ('PENDING', 'CONFIRMED', 'EXPIRED', 'CANCELLED');
 
 -- ── users ─────────────────────────────────────────────────────────────────────
@@ -24,7 +24,14 @@ CREATE TABLE users (
     provider  VARCHAR(50)  NOT NULL DEFAULT 'LOCAL'
 );
 
--- ── events ────────────────────────────────────────────────────────────────────
+-- ── venues (NEW: Static Geography) ────────────────────────────────────────────
+CREATE TABLE venues (
+    id             BIGSERIAL    PRIMARY KEY,
+    name           VARCHAR(255) NOT NULL UNIQUE,
+    total_capacity INT          NOT NULL CHECK (total_capacity > 0)
+);
+
+-- ── events (The overarching entity, e.g., "Aurora Festival") ──────────────────
 CREATE TABLE events (
     id               BIGSERIAL    PRIMARY KEY,
     title            VARCHAR(255) NOT NULL,
@@ -33,41 +40,47 @@ CREATE TABLE events (
     duration_minutes INT
 );
 
--- ── shows ─────────────────────────────────────────────────────────────────────
+-- ── shows (Temporal Instances) ────────────────────────────────────────────────
 CREATE TABLE shows (
     id             BIGSERIAL      PRIMARY KEY,
     event_id       BIGINT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    venue          VARCHAR(255)   NOT NULL,
+    venue_id       BIGINT         NOT NULL REFERENCES venues(id) ON DELETE RESTRICT,
     start_time     TIMESTAMPTZ    NOT NULL,
     end_time       TIMESTAMPTZ    NOT NULL,
-    total_capacity INT            NOT NULL CHECK (total_capacity > 0),
     price          NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
-    hall_name      VARCHAR(255)
+    hall_name      VARCHAR(255),
+    
+    CONSTRAINT chk_time_validity CHECK (end_time > start_time)
 );
 
--- ── seats ─────────────────────────────────────────────────────────────────────
+-- ── seats (Static Map) ────────────────────────────────────────────────────────
 CREATE TABLE seats (
     id          BIGSERIAL   PRIMARY KEY,
-    show_id     BIGINT      NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
+    venue_id    BIGINT      NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
     seat_number VARCHAR(20) NOT NULL,
-    status      seat_status NOT NULL DEFAULT 'AVAILABLE',
-    CONSTRAINT uq_show_seat UNIQUE (show_id, seat_number)
+    
+    -- Prevents duplicate seat identifiers within the same venue
+    CONSTRAINT uq_venue_seat UNIQUE (venue_id, seat_number)
 );
 
--- ── COMPOSITE INDEX: Optimizing Cache Warmup & Expiration Reconciliation ──────
-CREATE INDEX idx_seat_show_status ON seats(show_id, status);
-
--- ── bookings ──────────────────────────────────────────────────────────────────
+-- ── bookings (Dynamic State & Source of Truth) ────────────────────────────────
 CREATE TABLE bookings (
     id                BIGSERIAL      PRIMARY KEY,
     booking_reference VARCHAR(255)   NOT NULL UNIQUE, -- Kafka tracking reference UUID
-    user_id           BIGINT         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id           BIGINT         NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     show_id           BIGINT         NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
-    seat_id           BIGINT         NOT NULL REFERENCES seats(id) ON DELETE CASCADE, -- Direct high-performance relation
+    seat_id           BIGINT         NOT NULL REFERENCES seats(id) ON DELETE RESTRICT, 
     status            booking_status NOT NULL DEFAULT 'PENDING',
     created_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-    version           BIGINT         NOT NULL DEFAULT 0
+    version           BIGINT         NOT NULL DEFAULT 0, -- Optimistic locking for high concurrency
+    
+    -- CRITICAL: Prevents E12 from being double-booked for the exact same show instance
+    CONSTRAINT uq_show_seat_booking UNIQUE (show_id, seat_id)
 );
 
--- ── INDEX: Fast User Query Performance Guard ──────────────────────────────────
-CREATE INDEX idx_booking_user_show ON bookings(user_id, show_id);
+-- ── INDEXING: Query Performance Guards ────────────────────────────────────────
+-- Optimizes availability aggregation lookups when building the UI seat map
+CREATE INDEX idx_booking_show_status ON bookings(show_id, status);
+
+-- Optimizes user dashboard lookups
+CREATE INDEX idx_booking_user ON bookings(user_id);

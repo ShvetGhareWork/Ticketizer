@@ -1,118 +1,87 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { Terminal, Activity, Wifi, ShieldAlert, LogOut } from 'lucide-react';
-import { useApp } from '@/context/AppContext';
+import React from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useApp } from "@/context/AppContext";
+import { LogOut, User } from "lucide-react";
 
 export default function Header() {
-  const { connectionStatus, latency, authToken, logout } = useApp();
-  const [time, setTime] = useState<string>('');
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setTime(now.toISOString().replace('T', ' ').substring(0, 19));
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const getStatusDetails = () => {
-    switch (connectionStatus) {
-      case 'ONLINE':
-        return {
-          color: 'bg-emerald-500 text-emerald-500 border-emerald-500',
-          label: 'SYSTEM // ONLINE',
-          icon: <Wifi className="w-4 h-4 text-emerald-500" />,
-        };
-      case 'SIMULATED':
-        return {
-          color: 'bg-amber-500 text-amber-500 border-amber-500',
-          label: 'SANDBOX // SIMULATOR',
-          icon: <Activity className="w-4 h-4 text-amber-500 animate-pulse" />,
-        };
-      case 'OFFLINE':
-      default:
-        return {
-          color: 'bg-red-500 text-red-500 border-red-500 animate-pulse',
-          label: 'SYSTEM // OFFLINE',
-          icon: <ShieldAlert className="w-4 h-4 text-red-500" />,
-        };
-    }
-  };
-
-  const status = getStatusDetails();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { authToken, logout } = useApp();
 
   return (
-    <header className="border-b border-neutral-800 bg-[#050505] p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 select-none">
-      {/* Brand Branding */}
-      <div className="flex items-center gap-3">
-        <div className="bg-white text-black p-2 flex items-center justify-center">
-          <Terminal className="w-5 h-5 stroke-[2.5]" />
-        </div>
-        <div>
-          <h1 id="sys-branding-title" className="text-sm font-bold tracking-widest text-white">
-            TICKETFLOW // GRAND CINEMA NOIR
-          </h1>
-          <p className="text-[10px] text-neutral-500 tracking-wider">
-            REAL-TIME RESERVATION SYSTEMS GATEWAY
-          </p>
+    <nav className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 bg-white border-b border-gray-200 sticky top-0 z-50">
+      <div className="flex items-center gap-8 lg:gap-12">
+        {/* Logo */}
+        <Link
+          href="/"
+          className="flex items-center gap-2 font-extrabold text-lg sm:text-xl tracking-tight text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
+        >
+          <div className="w-3 h-3 bg-[#BFFF00]"></div>
+          Ticketizer
+        </Link>
+        {/* Desktop Nav Links */}
+        <div className="hidden md:flex gap-8 text-sm font-semibold text-gray-500">
+          <Link
+            href="/events"
+            className={`${
+              pathname?.startsWith("/events")
+                ? "text-blue-600 border-b-2 border-blue-600 pb-1"
+                : "hover:text-gray-900 transition-colors"
+            }`}
+          >
+            EVENTS
+          </Link>
+          <Link
+            href="/my-bookings"
+            className={`${
+              pathname === "/my-bookings"
+                ? "text-blue-600 border-b-2 border-blue-600 pb-1"
+                : "hover:text-gray-900 transition-colors"
+            }`}
+          >
+            MY BOOKINGS
+          </Link>
         </div>
       </div>
-
-      {/* Metrics Bar */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] text-neutral-400">
-        {/* Live Clock */}
-        <div className="hidden sm:block">
-          <span className="text-neutral-600">SYSTEM TIME: </span>
-          <span className="font-mono text-neutral-300">{time || '0000-00-00 00:00:00'}</span>
-        </div>
-
-        {/* Latency */}
-        <div>
-          <span className="text-neutral-600">RESPONSE SPEED: </span>
-          <span className="font-mono text-neutral-300">
-            {connectionStatus === 'OFFLINE' 
-              ? 'N/A' 
-              : latency !== null 
-                ? `${latency}ms` 
-                : '1ms'}
-          </span>
-        </div>
-
-        {/* Throughput */}
-        <div className="hidden md:block">
-          <span className="text-neutral-600">CAPACITY: </span>
-          <span className="font-mono text-neutral-300">200 SEATS</span>
-        </div>
-
-        {/* Connectivity Status Dot */}
-        <div className={`flex items-center gap-2 border border-neutral-800 px-3 py-1 bg-black`}>
-          <span className="relative flex h-2 w-2">
-            {connectionStatus !== 'OFFLINE' && (
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.color.split(' ')[0]} opacity-75`}></span>
-            )}
-            <span className={`relative inline-flex rounded-full h-2 w-2 ${status.color.split(' ')[0]}`}></span>
-          </span>
-          <span className={`font-bold tracking-widest text-[10px] ${status.color.split(' ')[1]}`}>
-            {status.label}
-          </span>
-          <span className="ml-1">{status.icon}</span>
-        </div>
-
-        {/* Logout Trigger */}
-        {authToken && (
-          <button
-            onClick={logout}
-            className="border border-red-950 bg-red-950/20 text-red-500 hover:bg-red-900/30 hover:border-red-600 px-2 py-1 font-bold transition-all flex items-center gap-1.5"
-            title="Log out and clear session"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            LOGOUT
-          </button>
+      {/* Auth Buttons */}
+      <div className="flex items-center gap-4 lg:gap-6">
+        {authToken ? (
+          <div className="flex items-center gap-4">
+            <span className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-wider bg-gray-100 px-3 py-1.5 rounded-sm border border-gray-200">
+              <User size={13} className="text-blue-600" />
+              SECURE KEY ACTIVE
+            </span>
+            <button
+              onClick={() => {
+                logout();
+                router.push("/auth/login");
+              }}
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-sm transition-all cursor-pointer"
+            >
+              <LogOut size={14} />
+              Sign Out
+            </button>
+          </div>
+        ) : (
+          <>
+            <Link
+              href="/auth/login"
+              className="hidden sm:block text-sm font-semibold hover:text-blue-600 transition-colors"
+            >
+              Sign In
+            </Link>
+            <button
+              onClick={() => router.push("/auth/register")}
+              className="bg-blue-600 text-white px-4 py-2 lg:px-6 lg:py-2.5 text-xs sm:text-sm font-bold rounded hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+            >
+              Get Started
+            </button>
+          </>
         )}
       </div>
-    </header>
+    </nav>
   );
 }

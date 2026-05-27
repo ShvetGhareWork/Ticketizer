@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useApp } from "@/context/AppContext";
+import Header from "@/components/Header";
 
 // Initialize the font
 const jakarta = Plus_Jakarta_Sans({
@@ -35,7 +36,7 @@ export default function BookingConfirmationPage() {
   );
   // Pull event context stored in sessionStorage from the event detail page
   const [eventContext, setEventContext] = useState<{
-    title: string; date: string; venue: string; city: string;
+    title: string; date: string; venue: string; city: string; time?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -153,53 +154,7 @@ export default function BookingConfirmationPage() {
       className={`min-h-screen flex flex-col bg-[#F8FAFC] text-gray-900 ${jakarta.className}`}
     >
       {/* NAVBAR */}
-      <nav className="flex items-center justify-between px-6 lg:px-12 py-5 bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="flex items-center gap-12">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-extrabold text-xl tracking-tight text-gray-900"
-          >
-            <div className="w-3 h-3 bg-blue-600"></div>
-            Ticketizer
-          </Link>
-
-          {/* Desktop Nav Links */}
-          <div className="hidden md:flex gap-8 text-sm font-semibold text-gray-500">
-            <Link
-              href="/events"
-              className="hover:text-gray-900 transition-colors"
-            >
-              Events
-            </Link>
-            <Link
-              href="/my-bookings"
-              className="text-blue-600 border-b-2 border-blue-600 pb-1"
-            >
-              My Bookings
-            </Link>
-          </div>
-        </div>
-
-        {/* Auth Buttons */}
-        <div>
-          {authToken ? (
-            <div className="flex items-center gap-2 bg-[#F1F3F5] px-3 py-1.5 rounded border border-gray-200">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wide">
-                SECURED
-              </span>
-            </div>
-          ) : (
-            <Link
-              href="/auth/login"
-              className="text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              Sign In
-            </Link>
-          )}
-        </div>
-      </nav>
+      <Header />
 
       {/* MAIN CONTENT */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-12 lg:py-16">

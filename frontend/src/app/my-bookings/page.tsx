@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import { Calendar, MapPin, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Header from "@/components/Header";
 
 // Initialize the font
 const jakarta = Plus_Jakarta_Sans({
@@ -71,64 +72,7 @@ export default function MyBookingsPage() {
       className={`min-h-screen flex flex-col bg-[#F8F9FB] text-gray-900 ${jakarta.className}`}
     >
       {/* NAVBAR */}
-      <nav className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="flex items-center gap-8 lg:gap-12">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-extrabold text-lg sm:text-xl tracking-tight text-blue-900"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-blue-600"
-            >
-              <rect x="3" y="8" width="18" height="8" rx="2" ry="2"></rect>
-              <line x1="3" y1="12" x2="21" y2="12"></line>
-              <line x1="8" y1="8" x2="8" y2="16"></line>
-              <line x1="16" y1="8" x2="16" y2="16"></line>
-            </svg>
-            Ticketizer
-          </Link>
-
-          {/* Desktop Nav Links */}
-          <div className="hidden md:flex gap-8 text-sm font-bold text-gray-500 mt-1 uppercase tracking-wider">
-            <Link
-              href="/events"
-              className="hover:text-gray-900 transition-colors"
-            >
-              Events
-            </Link>
-            <Link
-              href="/my-bookings"
-              className="text-blue-600 border-b-2 border-blue-600 pb-1"
-            >
-              My Bookings
-            </Link>
-          </div>
-        </div>
-
-        {/* User Profile */}
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex flex-col items-end">
-            <span className="text-sm font-bold text-gray-900 leading-tight">
-              Shvet Ghare
-            </span>
-            <span className="text-xs font-medium text-gray-500 leading-tight">
-              @shvet_g
-            </span>
-          </div>
-          <div className="w-10 h-10 rounded-full bg-blue-700 flex items-center justify-center text-white font-bold shadow-sm cursor-pointer hover:bg-blue-800 transition-colors">
-            SG
-          </div>
-        </div>
-      </nav>
+      <Header />
 
       {/* MAIN CONTENT */}
       <main className="flex-1 max-w-[1200px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 lg:py-12">

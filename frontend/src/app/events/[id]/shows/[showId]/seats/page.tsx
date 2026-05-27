@@ -6,6 +6,7 @@ import { Clock, ArrowRight, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useApp } from "@/context/AppContext";
+import Header from "@/components/Header";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -13,9 +14,6 @@ const jakarta = Plus_Jakarta_Sans({
   weight: ["400", "500", "600", "700", "800"],
 });
 
-const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
-const COLS = Array.from({ length: 20 }, (_, i) => i + 1);
-const SEAT_PRICE = 150.0;
 const FEE_PERCENT = 0.05;
 
 export default function SeatSelectionPage() {
@@ -31,8 +29,77 @@ export default function SeatSelectionPage() {
     addLog,
     authToken,
     currentShowId,
+    currentEventId,
     setCurrentShowId,
   } = useApp();
+
+  const [eventMeta, setEventMeta] = useState<{title?: string, venue?: string, city?: string} | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('currentEvent');
+        if (stored) {
+          setEventMeta(JSON.parse(stored));
+        }
+      } catch (e) {
+        console.error("Failed to parse currentEvent", e);
+      }
+    }
+  }, []);
+
+  const seatList = Object.values(seats);
+  
+  const venue = eventMeta?.venue || "";
+  const lowerVenue = venue.toLowerCase();
+  const title = eventMeta?.title || "";
+  const lowerTitle = title.toLowerCase();
+
+  const isSphere = lowerVenue.includes('sphere');
+  const isStadium = lowerVenue.includes('sofi') || lowerVenue.includes('stadium') || lowerVenue.includes('field') || lowerVenue.includes('modi') || lowerVenue.includes('wankhede') || lowerTitle.includes('world cup');
+  const isTheater = lowerVenue.includes('theater') || lowerVenue.includes('comedy') || lowerVenue.includes('club');
+
+  const ROWS = seatList.length > 0 
+    ? Array.from(new Set(seatList.map(s => s.row))).sort() 
+    : (isSphere 
+        ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] 
+        : isStadium
+          ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'] 
+          : isTheater
+            ? ['A', 'B', 'C', 'D', 'E', 'F']
+            : (showId === 1 
+                ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'] 
+                : showId === 2 
+                  ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] 
+                  : ['A', 'B', 'C', 'D', 'E', 'F']
+              )
+      );
+
+  const COLS = seatList.length > 0 
+    ? Array.from(new Set(seatList.map(s => s.number))).sort((a, b) => a - b)
+    : (isSphere
+        ? Array.from({ length: 15 }, (_, i) => i + 1)
+        : isStadium
+          ? Array.from({ length: 24 }, (_, i) => i + 1)
+          : isTheater
+            ? Array.from({ length: 12 }, (_, i) => i + 1)
+            : (showId === 1 
+                ? Array.from({ length: 24 }, (_, i) => i + 1)
+                : showId === 2 
+                  ? Array.from({ length: 15 }, (_, i) => i + 1)
+                  : Array.from({ length: 12 }, (_, i) => i + 1)
+              )
+      );
+
+  const SEAT_PRICE = isSphere ? 250.0 : isStadium ? 150.0 : isTheater ? 80.0 : (showId === 1 ? 150.0 : showId === 2 ? 250.0 : 80.0);
+
+  const venueName = venue 
+    ? `${venue} (${isSphere ? 'Immersive Sphere Layout' : isStadium ? 'Grand Stadium Layout' : 'Intimate Layout'})` 
+    : (showId === 1 
+        ? "Narendra Modi Stadium (Grand Stadium Layout)" 
+        : showId === 2 
+          ? "Las Vegas Sphere (Immersive Sphere Layout)" 
+          : "Comedy Club Theater (Intimate Layout)");
 
 
   const [timeLeft, setTimeLeft] = useState(585); // 09:45 in seconds
@@ -43,9 +110,11 @@ export default function SeatSelectionPage() {
       addLog("ERROR", "SECURE SHIELD ACTIVE: Please sign in or register to select seats.");
     }
 
-    // Sync showId from URL into AppContext if different
-    if (showId !== currentShowId) {
-      setCurrentShowId(showId);
+    const eventId = params?.id as string;
+
+    // Sync showId and eventId from URL into AppContext if different
+    if (showId !== currentShowId || eventId !== currentEventId) {
+      setCurrentShowId(showId, eventId);
     } else {
       // Sync seat status from relational + cache engine
       syncLiveInventory(true);
@@ -58,7 +127,7 @@ export default function SeatSelectionPage() {
 
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showId]);
+  }, [showId, params?.id, currentShowId, currentEventId]);
 
 
   useEffect(() => {
@@ -105,56 +174,7 @@ export default function SeatSelectionPage() {
       className={`min-h-screen flex flex-col bg-[#F8F9FB] text-gray-900 ${jakarta.className}`}
     >
       {/* NAVBAR */}
-      <nav className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="flex items-center gap-8 lg:gap-12">
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-extrabold text-xl tracking-tight text-blue-900"
-          >
-            <div className="w-3 h-3 bg-blue-600"></div>
-            Ticketizer
-          </Link>
-          <div className="hidden md:flex gap-8 text-sm font-semibold text-gray-500">
-            <Link
-              href="/events"
-              className="hover:text-gray-900 transition-colors"
-            >
-              Events
-            </Link>
-            <Link
-              href="/my-bookings"
-              className="text-blue-600 border-b-2 border-blue-600 pb-1"
-            >
-              My Bookings
-            </Link>
-          </div>
-        </div>
-        <div className="flex items-center gap-4 lg:gap-6">
-          {authToken ? (
-            <div className="flex items-center gap-2 bg-[#F1F3F5] px-3 py-1.5 rounded border border-gray-200">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wide">
-                AUTHENTICATED
-              </span>
-            </div>
-          ) : (
-            <>
-              <Link
-                href="/auth/login"
-                className="hidden sm:block text-sm font-semibold hover:text-blue-600 transition-colors"
-              >
-                Sign In
-              </Link>
-              <button
-                onClick={() => router.push("/auth/register")}
-                className="bg-blue-600 text-white px-4 py-2 lg:px-6 lg:py-2.5 text-xs sm:text-sm font-bold rounded hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                Get Started
-              </button>
-            </>
-          )}
-        </div>
-      </nav>
+      <Header />
 
       <main className="flex-1 max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-12 py-6 lg:py-10">
         {/* EVENT HEADER & TIMER */}
@@ -169,7 +189,7 @@ export default function SeatSelectionPage() {
               </h1>
             </div>
             <p className="text-sm sm:text-base text-gray-600 font-medium mt-2">
-              Secured Connection • Madision Square Garden & Wankhede Stadium Simulation
+              Secured Connection • {venueName}
             </p>
           </div>
 

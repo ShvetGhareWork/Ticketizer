@@ -37,6 +37,7 @@ export interface ConsoleLogEntry {
 interface AppContextType {
   authToken: string | null;
   currentShowId: number;
+  currentEventId: string | null;
   seats: Record<string, Seat>;
   activeAllocation: AllocationManifest | null;
   connectionStatus: 'ONLINE' | 'OFFLINE' | 'SIMULATED';
@@ -47,7 +48,7 @@ interface AppContextType {
   loginWithGoogle: (googleCredentialToken: string) => Promise<boolean>;
   register: (fullName: string, email: string, password?: string) => Promise<boolean>;
   logout: () => void;
-  setCurrentShowId: (showId: number) => void;
+  setCurrentShowId: (showId: number, eventId?: string) => void;
   syncLiveInventory: (isInitial?: boolean) => Promise<void>;
   selectSeat: (seatId: string) => Promise<void>;
   clearActiveAllocation: () => void;
@@ -63,22 +64,29 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentShowId, setCurrentShowIdState] = useState<number>(1);
+  const [currentEventId, setCurrentEventIdState] = useState<string | null>(null);
   const [seats, setSeats] = useState<Record<string, Seat>>({});
   const [activeAllocation, setActiveAllocation] = useState<AllocationManifest | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'ONLINE' | 'OFFLINE' | 'SIMULATED'>('SIMULATED');
   const [latency, setLatency] = useState<number | null>(null);
   const [logs, setLogs] = useState<ConsoleLogEntry[]>([]);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [seatsPerEvent, setSeatsPerEvent] = useState<Record<string, Record<string, Seat>>>({});
 
   // Keep references for callbacks to prevent closure stale states
   const authTokenRef = useRef(authToken);
   const currentShowIdRef = useRef(currentShowId);
+  const currentEventIdRef = useRef(currentEventId);
   const seatsRef = useRef(seats);
+  const seatsPerEventRef = useRef(seatsPerEvent);
   const activeAllocationRef = useRef(activeAllocation);
 
   useEffect(() => { authTokenRef.current = authToken; }, [authToken]);
   useEffect(() => { currentShowIdRef.current = currentShowId; }, [currentShowId]);
+  useEffect(() => { currentEventIdRef.current = currentEventId; }, [currentEventId]);
   useEffect(() => { seatsRef.current = seats; }, [seats]);
+  useEffect(() => { seatsPerEventRef.current = seatsPerEvent; }, [seatsPerEvent]);
   useEffect(() => { activeAllocationRef.current = activeAllocation; }, [activeAllocation]);
 
   // Load token from localStorage on mount (for persistent dev ease)
@@ -86,9 +94,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const savedToken = localStorage.getItem('authToken');
     if (savedToken) {
       setAuthToken(savedToken);
+      authTokenRef.current = savedToken; // Update ref immediately to prevent race conditions during initial sync
       setConnectionStatus('ONLINE');
       addLog('SYSTEM', 'RESTORED SESSION: Session token loaded from localStorage.');
     }
+    setIsInitialized(true);
   }, []);
 
   const addLog = useCallback((type: ConsoleLogEntry['type'], message: string) => {
@@ -245,15 +255,80 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ─────────────────────────────────────────────────────────────────────────────
   const generateInitialLocalSeats = () => {
     const initialSeats: Record<string, Seat> = {};
-    const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-    const seededBooked = new Set([
-      'A5', 'A12', 'B3', 'B18', 'C8', 'C19', 'D1', 'D20', 'E10',
-      'E11', 'F14', 'G2', 'G19', 'H6', 'H15', 'I4', 'J10', 'J11', 'J12'
-    ]);
+    const showId = currentShowIdRef.current;
+    
+    let venueName = "";
+    let eventTitle = "";
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('currentEvent');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          venueName = parsed.venue || "";
+          eventTitle = parsed.title || "";
+        }
+      } catch (e) {
+        console.error("Failed to parse currentEvent", e);
+      }
+    }
 
-    let idCounter = currentShowIdRef.current === 1 ? 1 : 201;
+    const lowerVenue = venueName.toLowerCase();
+    const lowerTitle = eventTitle.toLowerCase();
+
+    // Dynamic venue configs (stadium vs sphere vs comedy club)
+    let rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']; // 10 rows standard
+    let colsCount = 20; // 20 columns standard
+    
+    if (lowerVenue.includes('sphere')) {
+      // Las Vegas Sphere Premium Seating Configuration
+      rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']; // 12 rows
+      colsCount = 15; // 15 columns
+    } else if (
+      lowerVenue.includes('sofi') || 
+      lowerVenue.includes('stadium') || 
+      lowerVenue.includes('field') || 
+      lowerVenue.includes('modi') || 
+      lowerVenue.includes('wankhede') || 
+      lowerTitle.includes('world cup')
+    ) {
+      // Large Arena / Stadium Configuration (e.g. Narendra Modi, SoFi, Lumen Field)
+      rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']; // 14 rows
+      colsCount = 24; // 24 columns
+    } else if (lowerVenue.includes('theater') || lowerVenue.includes('comedy') || lowerVenue.includes('club')) {
+      // Intimate comedy theater seating configuration
+      rows = ['A', 'B', 'C', 'D', 'E', 'F']; // 6 rows
+      colsCount = 12; // 12 columns
+    } else {
+      // Show ID fallback
+      if (showId === 1) {
+        rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']; // 14 rows
+        colsCount = 24;
+      } else if (showId === 2) {
+        rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']; // 12 rows
+        colsCount = 15;
+      } else if (showId === 3) {
+        rows = ['A', 'B', 'C', 'D', 'E', 'F']; // 6 rows
+        colsCount = 12;
+      }
+    }
+    
+    const seededBooked = new Set<string>();
+    
+    // Deterministic seeded booked seats that differ significantly per showId and venue hash
+    const seedVal = showId + venueName.length + eventTitle.length;
+    rows.forEach((row, rowIndex) => {
+      for (let col = 1; col <= colsCount; col++) {
+        // Hash formula generates completely unique seat layouts for each show ID and venue combination
+        const hash = (rowIndex * 7 + col * 13 + seedVal * 31) % 10;
+        if (hash === 0 || hash === 3) {
+          seededBooked.add(`${row}${col}`);
+        }
+      }
+    });
+
+    let idCounter = showId === 1 ? 1 : (showId === 2 ? 337 : 201);
     rows.forEach((row) => {
-      for (let col = 1; col <= 20; col++) {
+      for (let col = 1; col <= colsCount; col++) {
         const seatNum = `${row}${col}`;
         initialSeats[seatNum] = {
           id: String(idCounter++),
@@ -270,11 +345,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setIsRefreshing(true);
     const startTime = performance.now();
     const showId = currentShowIdRef.current;
+    const eventId = currentEventIdRef.current;
+
+
     
-    // Build headers - include Bearer auth if logged in
+    // Build headers - include Bearer auth if logged in (only send real tokens to live backend)
     const headers: Record<string, string> = { 'Accept': 'application/json' };
-    if (authTokenRef.current) {
-      headers['Authorization'] = `Bearer ${authTokenRef.current}`;
+    const token = authTokenRef.current;
+    const isSimulatedToken = token?.startsWith('simulated-token-') || token?.startsWith('google-token-');
+    if (token && !isSimulatedToken) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     try {
@@ -288,25 +368,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (response.ok) {
         const data = await response.json();
-        const fetchedSeats: Record<string, Seat> = {};
-        const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+        // Generate the correctly-dimensioned layout for this specific venue
+        const fetchedSeats: Record<string, Seat> = generateInitialLocalSeats();
 
+        // Overlay status info from database records onto matching coordinates
         data.forEach((s: any) => {
-          // Parse sequential ID to coordinates
-          const idNum = Number(s.id);
-          // Standardize ID offset for show 2 (which ranges from 201 to 400)
-          const adjustedId = showId === 1 ? idNum : idNum - 200;
-          const rowIndex = Math.floor((adjustedId - 1) / 20);
-          const colNumber = ((adjustedId - 1) % 20) + 1;
-          const rowLabel = rows[rowIndex] || 'A';
-          const seatLabel = s.seatNumber || `${rowLabel}${colNumber}`;
-
-          fetchedSeats[seatLabel] = {
-            id: String(s.id),
-            row: rowLabel,
-            number: colNumber,
-            status: s.status as SeatStatus,
-          };
+          const seatLabel = s.seatNumber;
+          if (seatLabel && fetchedSeats[seatLabel]) {
+            fetchedSeats[seatLabel].status = s.status as SeatStatus;
+            fetchedSeats[seatLabel].id = String(s.id);
+          }
         });
 
         // Retain local client selections/locks so they aren't wiped out by polling
@@ -330,7 +401,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           addLog('SUCCESS', `LEDGER SYNC: Seat statuses loaded from PostgreSQL & Redis cache.`);
         }
       } else {
-        if (response.status === 403 || response.status === 401) {
+        if ((response.status === 403 || response.status === 401) && authTokenRef.current && !isSimulatedToken) {
           setAuthToken(null);
           localStorage.removeItem('authToken');
           setSeats({});
@@ -355,10 +426,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [connectionStatus, addLog]);
 
-  const setCurrentShowId = (showId: number) => {
+  const setCurrentShowId = (showId: number, eventId?: string) => {
+    // Save current seats before switching
+    const prevEventId = currentEventIdRef.current;
+    const prevShowId = currentShowIdRef.current;
+    if (prevEventId) {
+      const key = `${prevEventId}_${prevShowId}`;
+      setSeatsPerEvent((prev) => ({
+        ...prev,
+        [key]: seatsRef.current,
+      }));
+    }
+
     setCurrentShowIdState(showId);
     currentShowIdRef.current = showId;
-    setSeats({}); // Wipe old seat mapping to trigger full layout rebuild
+    
+    const nextEventId = eventId || prevEventId;
+    if (eventId) {
+      setCurrentEventIdState(eventId);
+      currentEventIdRef.current = eventId;
+    }
+    
+    // Clear active allocation if it belongs to a different show or a different event to prevent seat selection bleed
+    if (
+      activeAllocationRef.current && 
+      (activeAllocationRef.current.showId !== showId || (eventId && prevEventId !== eventId))
+    ) {
+      setActiveAllocation(null);
+      activeAllocationRef.current = null;
+    }
+
+    // Try loading saved seats for the new event & show
+    if (nextEventId) {
+      const newKey = `${nextEventId}_${showId}`;
+      const savedSeats = seatsPerEventRef.current[newKey];
+      if (savedSeats && Object.keys(savedSeats).length > 0) {
+        setSeats(savedSeats);
+      } else {
+        setSeats({}); // Re-generate/Sync fresh
+      }
+    } else {
+      setSeats({});
+    }
+    
     setTimeout(() => syncLiveInventory(true), 100);
   };
 
@@ -391,10 +501,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const nextBookingIds = bookingIds.filter((_: string, i: number) => i !== index);
 
         // Revert local seat status to AVAILABLE
-        setSeats((prev) => ({
-          ...prev,
-          [seatId]: { ...prev[seatId], status: 'AVAILABLE' }
-        }));
+        setSeats((prev) => {
+          const next = {
+            ...prev,
+            [seatId]: { ...prev[seatId], status: 'AVAILABLE' as SeatStatus }
+          };
+          const eventId = currentEventIdRef.current;
+          const showId = currentShowIdRef.current;
+          if (eventId) {
+            const key = `${eventId}_${showId}`;
+            setSeatsPerEvent((prevMap) => ({
+              ...prevMap,
+              [key]: next
+            }));
+          }
+          return next;
+        });
 
         if (nextSeatLabels.length === 0) {
           setActiveAllocation(null);
@@ -420,6 +542,71 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // Only allow selecting AVAILABLE seats
     if (seat.status !== 'AVAILABLE') return;
+
+    const showId = currentShowIdRef.current;
+    const isSimulatedSeat = showId === 1
+      ? Number(seat.id) > 336
+      : showId === 2
+        ? Number(seat.id) > 672
+        : true;
+
+    if (isSimulatedSeat) {
+      // Step 2: Optimistic UI update (Amber) and update local cache
+      setSeats((prev) => {
+        const next = {
+          ...prev,
+          [seatId]: { ...prev[seatId], status: 'LOCKED' as SeatStatus },
+        };
+        const eventId = currentEventIdRef.current;
+        if (eventId) {
+          const key = `${eventId}_${showId}`;
+          setSeatsPerEvent((prevMap) => ({
+            ...prevMap,
+            [key]: next,
+          }));
+        }
+        return next;
+      });
+      
+      // Simulate lock locally and return immediately
+      const data = { bookingId: `sim-booking-${showId}-${seat.id}-${Math.random().toString(36).substring(2, 7)}` };
+      
+      let updatedAlloc: AllocationManifest;
+      if (currentAlloc) {
+        const nextSeatLabels = [...(currentAlloc.seatLabels || [currentAlloc.seatLabel]), seatId];
+        const nextSeatIds = [...(currentAlloc.seatIds || [currentAlloc.seatId]), seat.id];
+        const nextBookingIds = [...(currentAlloc.bookingIds || [currentAlloc.bookingId]), data.bookingId];
+        
+        updatedAlloc = {
+          bookingId: nextBookingIds.join(','),
+          bookingIds: nextBookingIds,
+          seatId: nextSeatIds[0],
+          seatIds: nextSeatIds,
+          seatLabel: nextSeatLabels.join(', '),
+          seatLabels: nextSeatLabels,
+          status: 'PENDING',
+          showId,
+        };
+      } else {
+        updatedAlloc = {
+          bookingId: data.bookingId,
+          bookingIds: [data.bookingId],
+          seatId: seat.id,
+          seatIds: [seat.id],
+          seatLabel: seatId,
+          seatLabels: [seatId],
+          status: 'PENDING',
+          showId,
+        };
+      }
+      
+      setActiveAllocation(updatedAlloc);
+      activeAllocationRef.current = updatedAlloc;
+      addLog('SUCCESS', `LEASE CAPTURED (SANDBOX): Seat ${seatId} locked. Booking ID: ${data.bookingId.substring(0, 8)}...`);
+      return;
+    }
+
+
 
     // Step 2: Optimistic UI update (Amber)
     setSeats((prev) => ({
@@ -501,12 +688,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const next = { ...prev };
         labels.forEach((lbl: string) => {
           if (next[lbl] && next[lbl].status === 'LOCKED') {
-            next[lbl] = { ...next[lbl], status: 'AVAILABLE' };
+            next[lbl] = { ...next[lbl], status: 'BOOKED' };
           }
         });
+        
+        // Also update seatsPerEvent cache!
+        const eventId = currentEventIdRef.current;
+        const showId = currentShowIdRef.current;
+        if (eventId) {
+          const key = `${eventId}_${showId}`;
+          setSeatsPerEvent((prevMap) => ({
+            ...prevMap,
+            [key]: next
+          }));
+        }
+        
         return next;
       });
-      addLog('INFO', `LEASE RELEASED: Cleaned active basket. Seats ${labels.join(', ')} returned to available pool.`);
+      addLog('INFO', `LEASE RELEASED: finalized transactions. Seats ${labels.join(', ')} confirmed and BOOKED.`);
     }
     setActiveAllocation(null);
   }, [addLog]);
@@ -593,8 +792,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Initial Sync
   useEffect(() => {
-    syncLiveInventory(true);
-  }, []);
+    if (isInitialized) {
+      syncLiveInventory(true);
+    }
+  }, [isInitialized]);
 
   // Real-time Inventory Polling Daemon (Runs every 4 seconds when ONLINE / Token is present)
   useEffect(() => {
@@ -615,6 +816,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         authToken,
         currentShowId,
+        currentEventId,
         seats,
         activeAllocation,
         connectionStatus,

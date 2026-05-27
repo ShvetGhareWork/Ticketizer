@@ -8,6 +8,8 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import com.example.Ticketizer.features.inventory.SeatStateResponse;
+import com.example.Ticketizer.features.inventory.SeatRepository;
+import com.example.Ticketizer.features.inventory.Seat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +21,7 @@ import java.util.stream.Collectors;
 public class RedisReservationEngine {
 
     private final StringRedisTemplate redisTemplate;
+    private final SeatRepository seatRepository;
     private DefaultRedisScript<Long> reservationScript;
     private DefaultRedisScript<Long> releaseScript;
 
@@ -78,11 +81,13 @@ public List<SeatStateResponse> getRealTimeSeatStatuses(Long showId) {
     Set<Long> availableIds = availableSeats != null ? availableSeats.stream().map(Long::valueOf).collect(Collectors.toSet()) : Set.of();
     Set<Long> lockedIds = lockedSeats != null ? lockedSeats.stream().map(k -> Long.valueOf((String) k)).collect(Collectors.toSet()) : Set.of();
 
-    List<SeatStateResponse> matrix = new ArrayList<>(200);
+    // Fetch all database seats for this show to get the correct physical layout and sequential IDs
+    List<Seat> databaseSeats = seatRepository.findByShowId(showId);
+    List<SeatStateResponse> matrix = new ArrayList<>(databaseSeats.size());
 
-    // 2. Compute status maps for the entire physical layout (Seats 1 to 200)
-    for (int id = 1; id <= 200; id++) {
-        long seatId = id;
+    // 2. Compute status maps for the actual physical layout
+    for (Seat seat : databaseSeats) {
+        long seatId = seat.getId();
         String status;
 
         if (availableIds.contains(seatId)) {
