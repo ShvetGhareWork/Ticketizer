@@ -1,218 +1,629 @@
-'use client';
+"use client";
 
-import React from 'react';
-import Header from '@/components/Header';
-import SeatMap from '@/components/SeatMap';
-import CheckoutPanel from '@/components/CheckoutPanel';
-import SystemConsole from '@/components/SystemConsole';
-import LoginPortal from '@/components/LoginPortal';
-import { Layers, Database, ShieldAlert } from 'lucide-react';
-import { useApp } from '@/context/AppContext';
+import React, { useState } from "react";
+import { Search, ArrowRight, Share2, Bell, LogOut, User } from "lucide-react";
+import { Plus_Jakarta_Sans } from "next/font/google";
+import { motion } from "framer-motion";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useApp } from "@/context/AppContext";
 
-export default function TicketFlowDashboard() {
-  const { 
-    authToken,
-    currentShowId,
-    setCurrentShowId,
-    isRefreshing,
-    syncLiveInventory,
-    flushDatabase,
-    activeAllocation
-  } = useApp();
+// Initialize the premium, extensive font
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
+});
 
-  // Component A: Stateless Auth Guard Interceptor
-  if (!authToken) {
-    return (
-      <div className="flex flex-col flex-1 gap-4 md:gap-6 lg:gap-8">
-        <Header />
-        <LoginPortal />
-      </div>
-    );
-  }
+export default function TicketizerLanding() {
+  const router = useRouter();
+  const { authToken, logout } = useApp();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // --- Data for the Events Grid ---
+  const events = [
+    {
+      id: 1,
+      tag: "LIVE SALE",
+      tagColor: "bg-white text-gray-900",
+      image:
+        "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=800",
+      date: "26 MAY 2026 — MUMBAI",
+      title: "IPL FINAL 2026",
+      price: "From ₹5,000",
+    },
+    {
+      id: 2,
+      tag: "FAST FILLING",
+      tagColor: "bg-blue-600 text-white",
+      image:
+        "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=800",
+      date: "18 JUN 2026 — DELHI",
+      title: "COLDPLAY: MUSIC OF SPHERES",
+      price: "From ₹4,500",
+    },
+    {
+      id: 3,
+      tag: "",
+      tagColor: "",
+      image:
+        "https://images.unsplash.com/photo-1470229722913-7c090be5c524?auto=format&fit=crop&q=80&w=800",
+      date: "02 JUL 2026 — BENGALURU",
+      title: "DILJIT DOSANJH TOUR",
+      price: "From ₹2,500",
+    },
+    {
+      id: 4,
+      tag: "",
+      tagColor: "",
+      image:
+        "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&q=80&w=800",
+      date: "12 AUG 2026 — MUMBAI",
+      title: "ZAKIR KHAN LIVE",
+      price: "From ₹999",
+    },
+    {
+      id: 5,
+      tag: "",
+      tagColor: "",
+      image:
+        "https://images.unsplash.com/photo-1533174000255-124b17f54c9e?auto=format&fit=crop&q=80&w=800",
+      date: "25 AUG 2026 — HYDERABAD",
+      title: "LOLLAPALOOZA INDIA",
+      price: "From ₹8,000",
+    },
+    {
+      id: 6,
+      tag: "",
+      tagColor: "",
+      image:
+        "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&q=80&w=800",
+      date: "30 SEP 2026 — GOA",
+      title: "SUNBURN FESTIVAL",
+      price: "From ₹3,500",
+    },
+  ];
+
+  const categories = [
+    "All Events",
+    "Cricket",
+    "Concerts",
+    "Comedy",
+    "Football",
+    "Theatre",
+    "Festivals",
+  ];
+
+  // --- State for the Interactive Ticket Deck ---
+  const [ticketDeck, setTicketDeck] = useState([
+    {
+      id: "t1",
+      title: "IPL FINAL 2026",
+      venue: "Wankhede Stadium",
+      price: "₹5,000",
+      tag: "LIVE",
+      code: "#TKZ-94",
+    },
+    {
+      id: "t2",
+      title: "COLDPLAY INDIA",
+      venue: "DY Patil Stadium",
+      price: "₹4,500",
+      tag: "FAST",
+      code: "#TKZ-22",
+    },
+    {
+      id: "t3",
+      title: "DILJIT DOSANJH",
+      venue: "Mahalaxmi Racecourse",
+      price: "₹2,500",
+      tag: "NEW",
+      code: "#TKZ-07",
+    },
+  ]);
+
+  // Function to cycle the top card to the back of the deck
+  const cycleCardToBack = () => {
+    setTicketDeck((prev) => {
+      const newDeck = [...prev];
+      const topCard = newDeck.shift(); // Remove the first item
+      if (topCard) newDeck.push(topCard); // Add it to the end
+      return newDeck;
+    });
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/events?search=${encodeURIComponent(searchQuery.trim())}`);
+    } else {
+      router.push("/events");
+    }
+  };
+
+  const getTicketTargetUrl = (ticketId: string) => {
+    if (ticketId === "t1") return "/events/1";
+    if (ticketId === "t2") return "/events/2";
+    return "/events/3";
+  };
 
   return (
-    <div className="flex flex-col flex-1 gap-4 md:gap-6 lg:gap-8">
-      {/* Real-time Gateway Diagnostics Header */}
-      <Header />
+    <div
+      className={`min-h-screen bg-[#F8F9FA] text-gray-900 flex flex-col overflow-x-hidden ${jakarta.className}`}
+    >
+      {/* NAVBAR */}
+      <nav className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div className="flex items-center gap-8 lg:gap-12">
+          {/* Logo */}
+          <Link
+            href="/"
+            className="flex items-center gap-2 font-extrabold text-lg sm:text-xl tracking-tight text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
+          >
+            <div className="w-3 h-3 bg-[#BFFF00]"></div>
+            Ticketizer
+          </Link>
+          {/* Desktop Nav Links */}
+          <div className="hidden md:flex gap-8 text-sm font-semibold text-gray-500">
+            <Link
+              href="/events"
+              className="text-blue-600 border-b-2 border-blue-600 pb-1"
+            >
+              EVENTS
+            </Link>
+            <Link href="/my-bookings" className="hover:text-gray-900 transition-colors">
+              MY BOOKINGS
+            </Link>
+          </div>
+        </div>
+        {/* Auth Buttons */}
+        <div className="flex items-center gap-4 lg:gap-6">
+          {authToken ? (
+            <div className="flex items-center gap-4">
+              <span className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-wider bg-gray-100 px-3 py-1.5 rounded-sm border border-gray-200">
+                <User size={13} className="text-blue-600" />
+                SECURE KEY ACTIVE
+              </span>
+              <button
+                onClick={() => {
+                  logout();
+                  router.push("/auth/login");
+                }}
+                className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-sm transition-all"
+              >
+                <LogOut size={14} />
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <>
+              <Link
+                href="/auth/login"
+                className="hidden sm:block text-sm font-semibold hover:text-blue-600 transition-colors"
+              >
+                Sign In
+              </Link>
+              <button
+                onClick={() => router.push("/auth/register")}
+                className="bg-blue-600 text-white px-4 py-2 lg:px-6 lg:py-2.5 text-xs sm:text-sm font-bold rounded hover:bg-blue-700 transition-colors shadow-sm"
+              >
+                Get Started
+              </button>
+            </>
+          )}
+        </div>
+      </nav>
 
-      {/* Guided Booking Progress Steps */}
-      <div className="border border-neutral-800 bg-[#050505] p-4 select-none">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-neutral-500 uppercase tracking-widest font-extrabold font-mono">
-              BOOKING PROGRESSION:
-            </span>
+      {/* HERO SECTION */}
+      <section className="relative flex-1 flex flex-col justify-center px-4 sm:px-6 lg:px-12 py-10 lg:py-24 overflow-hidden border-b border-gray-200">
+        {/* Faint Grid Background Pattern */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-40 z-0"
+          style={{
+            backgroundImage:
+              "linear-gradient(#E5E7EB 1px, transparent 1px), linear-gradient(90deg, #E5E7EB 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+          }}
+        ></div>
+
+        <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center relative z-10">
+          {/* Left Column: Typography & Search */}
+          <div className="flex flex-col gap-6 lg:gap-8 mt-4 lg:mt-0">
+            <div className="flex items-center gap-2 text-blue-600 text-[10px] sm:text-xs font-bold tracking-widest uppercase">
+              <span className="w-2 h-2 bg-blue-600"></span>
+              Live Now — 3 events on sale
+            </div>
+
+            {/* Responsive Heading */}
+            <h1 className="text-5xl sm:text-6xl lg:text-[5rem] font-extrabold tracking-tight leading-[1.05] text-gray-900">
+              Find your seat.
+              <br className="hidden sm:block" />
+              Book it before
+              <br className="hidden sm:block" /> someone else does.
+            </h1>
+
+            <p className="text-gray-500 text-sm sm:text-base lg:text-lg max-w-md font-medium leading-relaxed">
+              IPL finals, concerts, comedy nights — real-time seat inventory. No
+              waiting. No bots. Just pure access.
+            </p>
+
+            {/* Responsive Search Component */}
+            <form
+              onSubmit={handleSearchSubmit}
+              className="mt-2 flex flex-col sm:flex-row w-full max-w-xl border border-gray-200 bg-white rounded shadow-sm focus-within:ring-2 focus-within:ring-blue-600 focus-within:border-transparent transition-all"
+            >
+              <div className="hidden sm:flex items-center pl-4 text-gray-400">
+                <Search size={20} />
+              </div>
+              <input
+                type="text"
+                placeholder="Search artist, team or venue..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full py-3 sm:py-4 px-4 sm:px-3 outline-none text-gray-900 placeholder-gray-400 font-medium bg-transparent text-sm sm:text-base"
+              />
+              <button
+                type="submit"
+                className="bg-blue-600 text-white px-8 py-3 sm:py-4 font-bold tracking-wide hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+              >
+                SEARCH <ArrowRight size={18} />
+              </button>
+            </form>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 text-xs font-mono">
-            {/* Step 1 */}
-            <div className="flex items-center gap-1.5">
-              <span className="w-5 h-5 flex items-center justify-center bg-emerald-500 text-black font-extrabold text-[10px]">
-                1
-              </span>
-              <span className="text-emerald-400 font-bold uppercase tracking-wider text-[10px]">
-                SIGN IN ✓
+          {/* Right Column: Animated Card Stack (Now visible and responsive on Mobile!) */}
+          <div className="flex justify-center lg:justify-end relative h-[320px] sm:h-[400px] lg:h-[500px] items-center mt-10 lg:mt-0">
+            {/* Background decorative 'B' */}
+            <div className="absolute inset-y-0 right-0 lg:w-3/4 flex items-center justify-center opacity-[0.03] pointer-events-none select-none">
+              <span className="text-[120px] sm:text-[180px] lg:text-[240px] font-black leading-none transform rotate-90 origin-center text-gray-900">
+                BOOK
               </span>
             </div>
 
-            <span className="text-neutral-800 hidden sm:inline">──</span>
+            {/* Interactive Ticket Stack */}
+            <div className="relative w-64 sm:w-72 lg:w-80 h-56 sm:h-64 z-10 mr-4 lg:mr-0">
+              {ticketDeck.map((ticket, index) => {
+                const isTopCard = index === 0;
+                const targetUrl = getTicketTargetUrl(ticket.id);
+                return (
+                  <motion.div
+                    key={ticket.id}
+                    layout // This enables smooth reordering animations automatically
+                    initial={false}
+                    animate={{
+                      top: index * 12, // Stepped down visually
+                      right: index * -16, // Stepped to the right
+                      scale: 1 - index * 0.04, // Slightly smaller as they go back
+                      rotate: isTopCard ? -3 : index * 2, // Only the top card tilts left
+                      zIndex: ticketDeck.length - index,
+                      opacity: 1 - index * 0.15,
+                    }}
+                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                    onClick={isTopCard ? cycleCardToBack : undefined}
+                    className={`absolute w-full bg-white border border-gray-200 shadow-2xl p-5 sm:p-6 transition-colors duration-300 ${
+                      isTopCard
+                        ? "cursor-pointer hover:border-blue-300"
+                        : "cursor-default"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-4 sm:mb-6">
+                      <span className="bg-blue-600 text-white text-[9px] sm:text-[10px] px-2 py-1 font-bold tracking-wide uppercase rounded-sm">
+                        {ticket.tag}
+                      </span>
+                      <span className="text-gray-400 text-[10px] sm:text-xs font-mono">
+                        {ticket.code}
+                      </span>
+                    </div>
+                    <h3 className="font-extrabold text-xl sm:text-2xl mb-1 text-gray-900 tracking-tight">
+                      {ticket.title}
+                    </h3>
+                    <p className="text-gray-500 text-xs sm:text-sm mb-6 sm:mb-8 font-medium">
+                      {ticket.venue}
+                    </p>
 
-            {/* Step 2 */}
-            <div className="flex items-center gap-1.5">
-              <span className={`w-5 h-5 flex items-center justify-center font-extrabold text-[10px] ${
-                activeAllocation 
-                  ? 'bg-emerald-500 text-black' 
-                  : 'bg-white text-black animate-pulse'
-              }`}>
-                2
-              </span>
-              <span className={`uppercase tracking-wider text-[10px] font-bold ${
-                activeAllocation 
-                  ? 'text-emerald-400' 
-                  : 'text-white'
-              }`}>
-                CHOOSE SEAT
-              </span>
-            </div>
+                    <div className="flex justify-between items-center border-t border-gray-100 pt-4 sm:pt-6">
+                      <span className="text-blue-600 font-bold text-base sm:text-lg">
+                        {ticket.price}
+                      </span>
 
-            <span className="text-neutral-800 hidden sm:inline">──</span>
-
-            {/* Step 3 */}
-            <div className="flex items-center gap-1.5">
-              <span className={`w-5 h-5 flex items-center justify-center font-extrabold text-[10px] ${
-                activeAllocation && activeAllocation.status === 'CONFIRMED'
-                  ? 'bg-emerald-500 text-black'
-                  : activeAllocation
-                    ? 'bg-[#d97706] text-black animate-pulse'
-                    : 'bg-neutral-900 text-neutral-600'
-              }`}>
-                3
-              </span>
-              <span className={`uppercase tracking-wider text-[10px] font-bold ${
-                activeAllocation && activeAllocation.status === 'CONFIRMED'
-                  ? 'text-emerald-400'
-                  : activeAllocation
-                    ? 'text-[#d97706]'
-                    : 'text-neutral-600'
-              }`}>
-                PAYMENT (RAZORPAY)
-              </span>
-            </div>
-
-            <span className="text-neutral-800 hidden sm:inline">──</span>
-
-            {/* Step 4 */}
-            <div className="flex items-center gap-1.5">
-              <span className={`w-5 h-5 flex items-center justify-center font-extrabold text-[10px] ${
-                activeAllocation && activeAllocation.status === 'CONFIRMED'
-                  ? 'bg-emerald-500 text-black animate-pulse'
-                  : 'bg-neutral-900 text-neutral-600'
-              }`}>
-                4
-              </span>
-              <span className={`uppercase tracking-wider text-[10px] font-bold ${
-                activeAllocation && activeAllocation.status === 'CONFIRMED'
-                  ? 'text-emerald-400'
-                  : 'text-neutral-600'
-              }`}>
-                ENTRY TICKET QR
-              </span>
+                      {/* The Arrow Button links to the event detail page */}
+                      <Link
+                        href={targetUrl}
+                        onClick={(e) => e.stopPropagation()} // Prevent clicking the arrow from cycling the card
+                        className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 flex items-center justify-center text-white hover:bg-blue-700 transition-colors rounded-sm shadow-md hover:shadow-lg z-20"
+                      >
+                        <ArrowRight size={16} />
+                      </Link>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* BLUE TICKER STRIP */}
+      <div className="bg-blue-600 text-white py-2.5 overflow-hidden whitespace-nowrap flex text-[10px] sm:text-xs md:text-sm font-bold tracking-widest uppercase">
+        <div className="animate-marquee inline-block">
+          <span className="mx-4 sm:mx-8">
+            IPL FINAL 2026 - SOLD 1,247 TICKETS TODAY
+          </span>{" "}
+          •<span className="mx-4 sm:mx-8">DILJIT DOSANJH MUMBAI TOUR</span> •
+          <span className="mx-4 sm:mx-8">
+            COLDPLAY INDIA 2026 - SEATS FILLING FAST
+          </span>{" "}
+          •
+          <span className="mx-4 sm:mx-8">
+            IPL FINAL 2026 - SOLD 1,247 TICKETS TODAY
+          </span>{" "}
+          •<span className="mx-4 sm:mx-8">DILJIT DOSANJH MUMBAI TOUR</span>
         </div>
       </div>
 
-      {/* Main Structural Matrix Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 flex-1 items-start">
-        
-        {/* Left Column: Seating Grid Layout Area (Cols 1 to 8) */}
-        <div className="lg:col-span-8 flex flex-col h-full gap-4">
-          
-          {/* Seating Header & Admin Operations Control Board */}
-          <div className="border border-neutral-800 bg-[#050505] p-3 flex flex-wrap items-center justify-between gap-4 select-none">
-            <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-[#d97706]" />
-              <span className="text-xs uppercase font-extrabold tracking-wider text-white">
-                AUDITORIUM SEATING MATRIX // SECTOR-1
-              </span>
-            </div>
-
-            {/* Ingress Controls & Sync/Flush Utilities */}
-            <div className="flex items-center gap-4 text-[10px] text-neutral-400 font-mono">
-              {/* Show Switch Dropdown Selector */}
-              <div className="flex items-center gap-1.5 border border-neutral-800 bg-black px-2 py-0.5">
-                <span className="text-neutral-600 font-bold">SELECT_SHOW:</span>
-                <select
-                  value={currentShowId}
-                  onChange={(e) => setCurrentShowId(Number(e.target.value))}
-                  disabled={activeAllocation !== null && activeAllocation.status === 'VERIFYING'}
-                  className="bg-black text-white border-none focus:outline-none font-mono font-extrabold text-[10px] uppercase cursor-pointer"
-                >
-                  <option value={1}>SHOW 1 // 18:00 UTC</option>
-                  <option value={2}>SHOW 2 // 21:30 UTC</option>
-                </select>
-              </div>
-
-              {/* Force Hydrate Sync */}
+      {/* MAIN CONTENT AREA */}
+      <main className="bg-[#F8F9FA]">
+        {/* CATEGORY FILTER BAR */}
+        <div className="bg-[#EBECEF] border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-3 sm:py-6 flex gap-2 sm:gap-3 overflow-x-auto no-scrollbar items-center">
+            {categories.map((cat, i) => (
               <button
-                onClick={() => syncLiveInventory(true)}
-                disabled={isRefreshing}
-                className="px-2 py-0.5 border border-neutral-800 hover:border-white bg-black text-neutral-400 hover:text-white transition-all font-bold uppercase flex items-center gap-1 disabled:opacity-50"
+                key={cat}
+                onClick={() =>
+                  router.push(`/events?category=${encodeURIComponent(cat)}`)
+                }
+                className={`whitespace-nowrap px-4 py-2 sm:px-6 sm:py-2.5 border rounded-sm text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                  i === 0
+                    ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-gray-900 shadow-sm"
+                }`}
               >
-                <Database className={`w-3 h-3 ${isRefreshing && 'animate-spin'}`} />
-                Sync
+                {cat}
               </button>
-
-              {/* Administrative DB Flush */}
-              <button
-                onClick={flushDatabase}
-                className="px-3 py-0.5 border border-red-800/80 bg-red-950/30 text-red-400 hover:bg-red-900/40 hover:border-red-500 transition-all font-extrabold uppercase flex items-center gap-1"
-                title="Wipe database bookings table and restore 200 AVAILABLE seats in PostgreSQL and Redis sets"
-              >
-                <ShieldAlert className="w-3.5 h-3.5" />
-                Flush DB
-              </button>
-            </div>
+            ))}
           </div>
-
-          {/* Seat Grid Map */}
-          <SeatMap />
         </div>
 
-        {/* Right Column: Checkout Manifest Panels & Logging Daemon Console (Cols 9 to 12) */}
-        <div className="lg:col-span-4 flex flex-col gap-4 h-full justify-between">
-          
-          {/* Checkout Panel Zone */}
-          <div className="flex-1 min-h-[360px]">
-            {activeAllocation ? (
-              <CheckoutPanel />
-            ) : (
-              /* Brutalist Idle Mode Card */
-              <div className="border border-neutral-800 bg-[#050505] p-6 text-center flex flex-col items-center justify-center h-full min-h-[380px] select-none">
-                <div className="border border-neutral-800 bg-black p-4 inline-block mb-4">
-                  <Database className="w-8 h-8 text-neutral-500 stroke-[1.5] animate-pulse" />
-                </div>
-                <h3 className="text-xs uppercase font-extrabold tracking-widest text-white mb-2">
-                  TRANSACTIONAL CORE STANDBY
-                </h3>
-                <p className="text-[10px] text-neutral-500 max-w-[240px] leading-5 mx-auto uppercase">
-                  Gateway idle. Click one or more available seat Nodes from the
-                  grid to allocate locks into the basket.
-                </p>
-                <div className="w-16 border-t border-neutral-800 my-6 mx-auto"></div>
-                <div className="text-[9px] text-neutral-600 font-mono tracking-wider">
-                  LISTENING FOR TRANSACTION INGRESS_
-                </div>
-              </div>
-            )}
+        {/* EVENTS GRID */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-10 lg:py-24">
+          <div className="flex justify-between items-center mb-6 sm:mb-8">
+            <h2 className="text-xs sm:text-sm font-bold tracking-wider text-gray-900 uppercase">
+              Featured Events
+            </h2>
+            <Link
+              href="/events"
+              className="text-blue-600 text-xs sm:text-sm font-bold flex items-center gap-1 hover:underline"
+            >
+              VIEW ALL <ArrowRight size={14} />
+            </Link>
           </div>
 
-          {/* System Diagnostics Ingress Log */}
-          <div>
-            <SystemConsole />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {events.map((event) => (
+              <div
+                key={event.id}
+                onClick={() => router.push(`/events/${event.id}`)}
+                className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-blue-600 transition-colors group cursor-pointer shadow-sm hover:shadow-md"
+              >
+                <div className="h-40 sm:h-48 relative overflow-hidden bg-gray-200">
+                  <img
+                    src={event.image}
+                    alt={event.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  {event.tag && (
+                    <div
+                      className={`absolute top-4 left-4 text-[9px] sm:text-[10px] font-bold px-2.5 py-1 rounded-sm ${event.tagColor}`}
+                    >
+                      {event.tag}
+                    </div>
+                  )}
+                </div>
+                <div className="p-5 sm:p-6">
+                  <p className="text-blue-600 text-[10px] sm:text-xs font-bold tracking-wide uppercase mb-2">
+                    {event.date}
+                  </p>
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-6 sm:mb-8 line-clamp-1">
+                    {event.title}
+                  </h3>
+                  <div className="flex justify-between items-center">
+                    <span className="text-blue-600 font-mono font-bold text-sm sm:text-base">
+                      {event.price}
+                    </span>
+                    <span className="text-gray-900 text-[10px] sm:text-xs font-bold tracking-wide flex items-center gap-1 group-hover:text-blue-600 transition-colors">
+                      BOOK NOW{" "}
+                      <ArrowRight
+                        size={14}
+                        className="group-hover:translate-x-1 transition-transform"
+                      />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* HOW IT WORKS */}
+        <section className="bg-white py-12 sm:py-16 lg:py-24 border-y border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12">
+            <div className="mb-10 lg:mb-16 max-w-xl text-center sm:text-left mx-auto sm:mx-0">
+              <h2 className="text-2xl sm:text-3xl font-extrabold mb-3 sm:mb-4">
+                Simple. Fast. Final.
+              </h2>
+              <p className="text-gray-500 text-sm sm:text-base font-medium">
+                Our system is engineered for the highest load events on the
+                planet.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-10 lg:gap-12 text-center sm:text-left">
+              {[
+                {
+                  step: "01",
+                  title: "SEARCH",
+                  desc: "Find your event using our real-time global database. No cached results, just live inventory.",
+                },
+                {
+                  step: "02",
+                  title: "SELECT",
+                  desc: "Pick your exact seat using our interactive, high-precision map grid. What you see is available.",
+                },
+                {
+                  step: "03",
+                  title: "BOOK",
+                  desc: "Instant confirmation. Our 200ms transaction cycle ensures you don't lose the seat to a bot.",
+                },
+              ].map((item) => (
+                <div key={item.step}>
+                  <div className="text-5xl sm:text-6xl font-black text-blue-100 mb-4 sm:mb-6">
+                    {item.step}
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold mb-2 sm:mb-3">
+                    {item.title}
+                  </h3>
+                  <p className="text-gray-500 text-xs sm:text-sm leading-relaxed font-medium">
+                    {item.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* STATS */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-16 lg:py-24 grid grid-cols-2 lg:flex lg:flex-row justify-center gap-4 sm:gap-6">
+          {[
+            { value: "50K+", label: "BOOKINGS DAILY" },
+            { value: "200ms", label: "TRANS. TIME" },
+            { value: "99.9%", label: "UP TIME" },
+            { value: "₹0", label: "CONV. FEES" },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="bg-white border border-gray-200 rounded-xl p-6 sm:p-8 text-center lg:flex-1 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <div className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-blue-600 mb-1 sm:mb-2">
+                {stat.value}
+              </div>
+              <div className="text-[8px] sm:text-[10px] font-bold text-gray-500 tracking-wider uppercase">
+                {stat.label}
+              </div>
+            </div>
+          ))}
+        </section>
+
+        {/* CTA BANNER */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 pb-12 sm:pb-16 lg:pb-24">
+          <div className="bg-blue-600 rounded-xl sm:rounded-2xl p-6 sm:p-8 lg:p-16 flex flex-col lg:flex-row justify-between items-center text-center lg:text-left gap-6 sm:gap-8 shadow-xl">
+            <div>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white mb-2 sm:mb-3">
+                NEVER MISS ANOTHER BEAT.
+              </h2>
+              <p className="text-blue-100 text-sm sm:text-base lg:text-lg font-medium">
+                Join 2 million fans getting the best seats first.
+              </p>
+            </div>
+            <button
+              onClick={() => router.push("/auth/register")}
+              className="bg-white text-blue-600 px-6 sm:px-8 py-3 sm:py-4 rounded-md font-bold text-xs sm:text-sm tracking-wide shadow-sm hover:bg-gray-50 transition-colors whitespace-nowrap w-full lg:w-auto cursor-pointer"
+            >
+              CREATE ACCOUNT
+            </button>
+          </div>
+        </section>
+      </main>
+
+      {/* FOOTER */}
+      <footer className="bg-white border-t border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-10 sm:py-12 lg:py-16 flex flex-col md:flex-row justify-between gap-10 md:gap-12">
+          <div className="max-w-xs text-center md:text-left mx-auto md:mx-0">
+            <Link
+              href="/"
+              className="font-extrabold text-lg sm:text-xl tracking-tight mb-3 sm:mb-4 text-blue-900 flex items-center justify-center md:justify-start gap-2 cursor-pointer"
+            >
+              <div className="w-3 h-3 bg-[#BFFF00]"></div>
+              Ticketizer
+            </Link>
+            <p className="text-gray-500 text-[10px] sm:text-xs font-medium">
+              © 2026 Ticketizer. Seats don&apos;t wait.
+            </p>
+          </div>
+
+          <div className="flex justify-center md:justify-start gap-12 sm:gap-16 md:gap-24">
+            <div>
+              <h4 className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-900 uppercase mb-4 sm:mb-6">
+                Product
+              </h4>
+              <ul className="space-y-3 sm:space-y-4 text-xs sm:text-sm text-gray-500 font-medium">
+                <li>
+                  <Link href="#" className="hover:text-blue-600 transition-colors">
+                    Help
+                  </Link>
+                </li>
+                <li>
+                  <Link href="#" className="hover:text-blue-600 transition-colors">
+                    About
+                  </Link>
+                </li>
+                <li>
+                  <Link href="#" className="hover:text-blue-600 transition-colors">
+                    Contact
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-[10px] sm:text-xs font-bold tracking-widest text-gray-900 uppercase mb-4 sm:mb-6">
+                Legal
+              </h4>
+              <ul className="space-y-3 sm:space-y-4 text-xs sm:text-sm text-gray-500 font-medium">
+                <li>
+                  <Link href="#" className="hover:text-blue-600 transition-colors">
+                    Privacy
+                  </Link>
+                </li>
+                <li>
+                  <Link href="#" className="hover:text-blue-600 transition-colors">
+                    Terms
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex justify-center md:justify-end gap-4 items-start">
+            <button className="w-8 h-8 sm:w-10 sm:h-10 border border-gray-200 rounded-full flex items-center justify-center text-gray-600 hover:text-blue-600 hover:border-blue-600 transition-colors bg-gray-50 cursor-pointer">
+              <Share2 size={14} />
+            </button>
+            <button className="w-8 h-8 sm:w-10 sm:h-10 border border-gray-200 rounded-full flex items-center justify-center text-gray-600 hover:text-blue-600 hover:border-blue-600 transition-colors bg-gray-50 cursor-pointer">
+              <Bell size={14} />
+            </button>
           </div>
         </div>
-      </div>
+      </footer>
+
+      {/* CSS for marquee animation & utilities */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        @keyframes marquee {
+          0% { transform: translateX(0%); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+          animation: marquee 20s linear infinite;
+        }
+        /* Hide scrollbar for category filters */
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `,
+        }}
+      />
     </div>
   );
 }

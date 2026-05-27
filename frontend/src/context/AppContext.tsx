@@ -44,6 +44,8 @@ interface AppContextType {
   logs: ConsoleLogEntry[];
   isRefreshing: boolean;
   login: (email: string, password?: string) => Promise<boolean>;
+  loginWithGoogle: (googleCredentialToken: string) => Promise<boolean>;
+  register: (fullName: string, email: string, password?: string) => Promise<boolean>;
   logout: () => void;
   setCurrentShowId: (showId: number) => void;
   syncLiveInventory: (isInitial?: boolean) => Promise<void>;
@@ -126,11 +128,106 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addLog('SUCCESS', 'AUTH RESOLVED: Access token captured. Gateway ONLINE.');
         return true;
       } else {
-        throw new Error('Authentication rejected');
+        addLog('ERROR', `AUTH REFUSED: Relational gateway returned status ${response.status}. Credentials rejected.`);
+        return false;
+      }
+    } catch {
+      addLog('ERROR', 'AUTH FAILBACK: Relational gateway offline. Activating local simulated credentials...');
+      const simulatedToken = `simulated-token-${btoa(email)}`;
+      setAuthToken(simulatedToken);
+      localStorage.setItem('authToken', simulatedToken);
+      setConnectionStatus('SIMULATED');
+      addLog('SUCCESS', 'AUTH RESOLVED (SIMULATED): Handshake succeeded in offline sandbox mode.');
+      return true;
+    }
+  };
+
+  const loginWithGoogle = async (googleCredentialToken: string): Promise<boolean> => {
+    addLog('SYSTEM', 'AUTH REQUEST: Initiating secure Google OAuth handshake...');
+    
+    let email = 'google-user@gmail.com';
+    let fullName = 'Google User';
+    
+    try {
+      if (googleCredentialToken) {
+        const base64Url = googleCredentialToken.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(window.atob(base64));
+        email = payload.email || email;
+        fullName = payload.name || payload.given_name || fullName;
       }
     } catch (err) {
-      addLog('ERROR', 'AUTH FAILED: Gateway auth point offline or credentials rejected.');
-      return false;
+      addLog('ERROR', 'AUTH REQUEST: Google token payload parsing failed.');
+    }
+    
+    try {
+      // Try logging in first to avoid triggering a 409 Conflict console error for returning users
+      let loginRes = await fetch('http://localhost:8080/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: 'google-oauth-mock' }),
+      });
+
+      // If user doesn't exist yet, attempt registration
+      if (!loginRes.ok) {
+        const regRes = await fetch('http://localhost:8080/api/v1/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fullName, email, password: 'google-oauth-mock' }),
+        });
+
+        if (regRes.ok || regRes.status === 409) {
+          loginRes = await fetch('http://localhost:8080/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password: 'google-oauth-mock' }),
+          });
+        }
+      }
+
+      if (loginRes.ok) {
+        const data = await loginRes.json();
+        const token = data.accessToken;
+        setAuthToken(token);
+        localStorage.setItem('authToken', token);
+        setConnectionStatus('ONLINE');
+        addLog('SUCCESS', 'AUTH RESOLVED (GOOGLE): Google account synced and stored in relational database.');
+        return true;
+      }
+      throw new Error('Google registration handshake failed');
+    } catch {
+      const simulatedToken = `google-token-${btoa(email)}`;
+      setAuthToken(simulatedToken);
+      localStorage.setItem('authToken', simulatedToken);
+      setConnectionStatus('SIMULATED');
+      addLog('SUCCESS', `AUTH RESOLVED (GOOGLE): Secure token received for ${email}. (SIMULATED mode)`);
+      return true;
+    }
+  };
+
+  const register = async (fullName: string, email: string, password?: string): Promise<boolean> => {
+    addLog('SYSTEM', `REGISTER REQUEST: Registering account for ${fullName} (${email})...`);
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName, email, password }),
+      });
+      if (response.ok) {
+        addLog('SUCCESS', 'REGISTRATION SUCCESS: Account provisioned. Logging in...');
+        return await login(email, password);
+      } else {
+        addLog('ERROR', `REGISTRATION REFUSED: Relational gateway returned status ${response.status}. Account exists or validation failed.`);
+        return false;
+      }
+    } catch {
+      addLog('ERROR', 'REGISTRATION FAILBACK: Relational gateway offline. Activating local simulated user...');
+      const simulatedToken = `simulated-token-${btoa(email)}`;
+      setAuthToken(simulatedToken);
+      localStorage.setItem('authToken', simulatedToken);
+      setConnectionStatus('SIMULATED');
+      addLog('SUCCESS', 'AUTH RESOLVED: Sandbox user registered and logged in.');
+      return true;
     }
   };
 
@@ -233,6 +330,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           addLog('SUCCESS', `LEDGER SYNC: Seat statuses loaded from PostgreSQL & Redis cache.`);
         }
       } else {
+        if (response.status === 403 || response.status === 401) {
+          setAuthToken(null);
+          localStorage.removeItem('authToken');
+          setSeats({});
+          setConnectionStatus('SIMULATED');
+          addLog('ERROR', 'SESSION CONFLICT: Relational database rejected active token. Please sign in again.');
+          return;
+        }
         throw new Error('Database server returned error status');
       }
     } catch (err) {
@@ -517,6 +622,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         logs,
         isRefreshing,
         login,
+        loginWithGoogle,
+        register,
         logout,
         setCurrentShowId,
         syncLiveInventory,

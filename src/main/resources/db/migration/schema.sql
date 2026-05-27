@@ -7,12 +7,22 @@ DROP TABLE IF EXISTS bookings CASCADE;
 DROP TABLE IF EXISTS seats CASCADE;
 DROP TABLE IF EXISTS shows CASCADE;
 DROP TABLE IF EXISTS events CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
 DROP TYPE IF EXISTS seat_status CASCADE;
 DROP TYPE IF EXISTS booking_status CASCADE;
 
 -- ── PostgreSQL ENUM Types ─────────────────────────────────────────────────────
 CREATE TYPE seat_status AS ENUM ('AVAILABLE', 'LOCKED', 'BOOKED');
 CREATE TYPE booking_status AS ENUM ('PENDING', 'CONFIRMED', 'EXPIRED', 'CANCELLED');
+
+-- ── users ─────────────────────────────────────────────────────────────────────
+CREATE TABLE users (
+    id        BIGSERIAL    PRIMARY KEY,
+    full_name VARCHAR(255),
+    email     VARCHAR(255) NOT NULL UNIQUE,
+    password  VARCHAR(255),
+    provider  VARCHAR(50)  NOT NULL DEFAULT 'LOCAL'
+);
 
 -- ── events ────────────────────────────────────────────────────────────────────
 CREATE TABLE events (
@@ -51,7 +61,7 @@ CREATE INDEX idx_seat_show_status ON seats(show_id, status);
 CREATE TABLE bookings (
     id                BIGSERIAL      PRIMARY KEY,
     booking_reference VARCHAR(255)   NOT NULL UNIQUE, -- Kafka tracking reference UUID
-    user_id           BIGINT         NOT NULL,
+    user_id           BIGINT         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     show_id           BIGINT         NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
     seat_id           BIGINT         NOT NULL REFERENCES seats(id) ON DELETE CASCADE, -- Direct high-performance relation
     status            booking_status NOT NULL DEFAULT 'PENDING',
