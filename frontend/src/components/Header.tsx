@@ -11,45 +11,52 @@ export default function Header() {
   const pathname = usePathname();
   const { authToken, logout } = useApp();
 
+  const isBookingPath =
+    pathname?.includes("/seats") ||
+    pathname?.includes("/checkout") ||
+    pathname?.includes("/booking/");
+
   return (
-    <nav className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 bg-white border-b border-gray-200 sticky top-0 z-50">
-      <div className="flex items-center gap-8 lg:gap-12">
+    <nav className="flex items-center justify-between px-3 sm:px-6 lg:px-12 py-4 bg-white border-b border-gray-200 sticky top-0 z-50">
+      <div className="flex items-center gap-3 sm:gap-8 lg:gap-12 min-w-0">
         {/* Logo */}
         <Link
           href="/"
-          className="flex items-center gap-2 font-extrabold text-lg sm:text-xl tracking-tight text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 font-extrabold text-sm sm:text-xl tracking-tight text-gray-900 hover:text-blue-600 transition-colors cursor-pointer flex-shrink-0"
         >
-          <div className="w-3 h-3 bg-[#BFFF00]"></div>
+          <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-[#BFFF00]"></div>
           Ticketizer
         </Link>
-        {/* Desktop Nav Links */}
-        <div className="hidden md:flex gap-8 text-sm font-semibold text-gray-500">
-          <Link
-            href="/events"
-            className={`${
-              pathname?.startsWith("/events")
-                ? "text-blue-600 border-b-2 border-blue-600 pb-1"
-                : "hover:text-gray-900 transition-colors"
-            }`}
-          >
-            EVENTS
-          </Link>
-          <Link
-            href="/my-bookings"
-            className={`${
-              pathname === "/my-bookings"
-                ? "text-blue-600 border-b-2 border-blue-600 pb-1"
-                : "hover:text-gray-900 transition-colors"
-            }`}
-          >
-            MY BOOKINGS
-          </Link>
-        </div>
+        {/* Responsive Nav Links */}
+        {!isBookingPath && (
+          <div className="flex gap-2.5 sm:gap-8 text-[10px] sm:text-xs md:text-sm font-extrabold text-gray-500 tracking-wider">
+            <Link
+              href="/events"
+              className={`${
+                pathname?.startsWith("/events")
+                  ? "text-blue-600 border-b-2 border-blue-600 pb-1"
+                  : "hover:text-gray-900 transition-colors"
+              }`}
+            >
+              EVENTS
+            </Link>
+            <Link
+              href="/my-bookings"
+              className={`${
+                pathname === "/my-bookings"
+                  ? "text-blue-600 border-b-2 border-blue-600 pb-1"
+                  : "hover:text-gray-900 transition-colors"
+              }`}
+            >
+              MY BOOKINGS
+            </Link>
+          </div>
+        )}
       </div>
       {/* Auth Buttons */}
-      <div className="flex items-center gap-4 lg:gap-6">
+      <div className="flex items-center gap-3 lg:gap-6 flex-shrink-0">
         {authToken ? (
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <span className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-wider bg-gray-100 px-3 py-1.5 rounded-sm border border-gray-200">
               <User size={13} className="text-blue-600" />
               SECURE KEY ACTIVE
@@ -59,9 +66,9 @@ export default function Header() {
                 logout();
                 router.push("/auth/login");
               }}
-              className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-sm transition-all cursor-pointer"
+              className="flex items-center gap-1 text-[10px] sm:text-sm font-bold text-red-600 border border-red-200 hover:bg-red-50 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-sm transition-all cursor-pointer whitespace-nowrap"
             >
-              <LogOut size={14} />
+              <LogOut size={12} className="sm:w-3.5 sm:h-3.5" />
               Sign Out
             </button>
           </div>
@@ -75,7 +82,7 @@ export default function Header() {
             </Link>
             <button
               onClick={() => router.push("/auth/register")}
-              className="bg-blue-600 text-white px-4 py-2 lg:px-6 lg:py-2.5 text-xs sm:text-sm font-bold rounded hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+              className="bg-blue-600 text-white px-3 py-2 lg:px-6 lg:py-2.5 text-[10px] sm:text-sm font-bold rounded hover:bg-blue-700 transition-colors shadow-sm cursor-pointer whitespace-nowrap"
             >
               Get Started
             </button>

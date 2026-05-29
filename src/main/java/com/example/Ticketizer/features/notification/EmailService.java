@@ -23,8 +23,41 @@ public class EmailService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
+            String rawTitle = event.showTitle() != null ? event.showTitle() : "";
+            String cleanedTitle = rawTitle.split(":::imageURL:::")[0];
+            String bannerImageUrl = "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=600&q=80"; // fallback
+            if (rawTitle.contains(":::imageURL:::")) {
+                String[] parts = rawTitle.split(":::imageURL:::");
+                if (parts.length > 1 && parts[1] != null && !parts[1].trim().isEmpty()) {
+                    bannerImageUrl = parts[1].trim();
+                }
+            }
+
             helper.setTo(event.recipientEmail());
-            helper.setSubject("Your Ticket Confirmation for " + event.showTitle());
+            helper.setSubject("Your Ticket Confirmation for " + cleanedTitle);
+
+            String[] seats = event.seatNumber().split(",\\s*");
+            String[] qrCodes = event.qrCodeBase64() != null ? event.qrCodeBase64().split("\\|") : new String[0];
+
+            // Build dynamic seat details HTML list
+            StringBuilder seatsHtml = new StringBuilder();
+            for (String seat : seats) {
+                seatsHtml.append("<span style='display: inline-block; padding: 4px 8px; margin: 2px; background-color: #E2ECFF; color: #0d6efd; border-radius: 4px; font-weight: 800; font-size: 13px;'>")
+                         .append(seat)
+                         .append("</span> ");
+            }
+
+            // Build dynamic QR codes HTML layout
+            StringBuilder qrHtml = new StringBuilder();
+            for (int i = 0; i < qrCodes.length; i++) {
+                String seatLabel = i < seats.length ? seats[i] : "";
+                qrHtml.append(
+                    "            <div style='display: inline-block; margin: 10px; padding: 12px; background-color: #ffffff; border: 2px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); text-align: center;'>" +
+                    "              <p style='margin: 0 0 8px 0; font-size: 11px; font-weight: bold; color: #0d6efd;'>SEAT " + seatLabel + "</p>" +
+                    "              <img src=\"cid:qrCode_" + i + "\" alt=\"Ticket QR Code\" style=\"width: 140px; height: 140px; display: block;\" />" +
+                    "            </div>"
+                );
+            }
 
             // Build rich HTML email structure
             String htmlBody = String.format(
@@ -43,7 +76,7 @@ public class EmailService {
                 "          " +
                 "          <!-- HEADER BANNER IMAGE -->" +
                 "          <div style='width: 100%%; height: 180px; background: linear-gradient(135deg, #0d6efd 0%%, #002D62 100%%); relative; overflow: hidden;'>" +
-                "            <img src='https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=600&q=80' alt='Live Concert' style='width: 100%%; height: 100%%; object-fit: cover; opacity: 0.85;' />" +
+                "            <img src='%s' alt='Event Banner' style='width: 100%%; height: 100%%; object-fit: cover; opacity: 0.85;' />" +
                 "          </div>" +
                 "          " +
                 "          <!-- BRAND HEADER -->" +
@@ -80,7 +113,7 @@ public class EmailService {
                 "              </tr>" +
                 "              <tr>" +
                 "                <td width='50%%' style='vertical-align: top;'>" +
-                "                  <p style='margin: 0 0 2px 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px;'>Seat Allocated</p>" +
+                "                  <p style='margin: 0 0 2px 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px;'>Seats Allocated</p>" +
                 "                  <p style='margin: 0; font-size: 15px; font-weight: 800; color: #0d6efd;'>%s</p>" +
                 "                </td>" +
                 "                <td width='50%%' style='vertical-align: top;'>" +
@@ -99,10 +132,8 @@ public class EmailService {
                 "          " +
                 "          <!-- QR CARD -->" +
                 "          <div style='padding: 32px; text-align: center; background-color: #FCFDFE;'>" +
-                "            <p style='margin: 0 0 16px 0; font-size: 14px; font-weight: 700; color: #334155;'>Scan this digital token at the entrance gate:</p>" +
-                "            <div style='display: inline-block; padding: 12px; background-color: #ffffff; border: 2px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02);'>" +
-                "              <img src=\"cid:qrCode\" alt=\"Ticket QR Code\" style=\"width: 140px; height: 140px; display: block;\" />" +
-                "            </div>" +
+                "            <p style='margin: 0 0 16px 0; font-size: 14px; font-weight: 700; color: #334155;'>Scan these digital tokens at the entrance gate:</p>" +
+                "            %s" +
                 "            <p style='margin: 12px 0 0 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px;'>Authorized Entry Code</p>" +
                 "          </div>" +
                 "          " +
@@ -128,30 +159,50 @@ public class EmailService {
                 "  </table>" +
                 "</body>" +
                 "</html>",
+                bannerImageUrl,
                 event.userName(),
-                event.showTitle(),
+                cleanedTitle,
                 event.bookingId(),
                 event.StartTime(),
-                event.seatNumber()
+                seatsHtml.toString(),
+                qrHtml.toString()
             );
 
             helper.setText(htmlBody, true);
 
             // Add Gmail-compliant inline CID resource mapping
             if (event.qrCodeBase64() != null) {
-                String cleanBase64 = event.qrCodeBase64()
-                    .replace("data:image/png;base64,", "")
-                    .replaceAll("\\s", "");
-                byte[] qrBytes = Base64.getDecoder().decode(cleanBase64);
-                
-                ByteArrayResource qrResource = new ByteArrayResource(qrBytes) {
-                    @Override
-                    public String getFilename() {
-                        return "qrcode.png";
+                for (int i = 0; i < qrCodes.length; i++) {
+                    if (qrCodes[i] == null || qrCodes[i].trim().isEmpty()) {
+                        continue;
                     }
-                };
-                
-                helper.addInline("qrCode", qrResource, "image/png");
+                    String cleanBase64 = qrCodes[i].trim();
+                    int commaIdx = cleanBase64.indexOf(",");
+                    if (commaIdx != -1) {
+                        cleanBase64 = cleanBase64.substring(commaIdx + 1);
+                    }
+                    cleanBase64 = cleanBase64.replaceAll("[^A-Za-z0-9+/=]", "");
+                    if (cleanBase64.isEmpty()) {
+                        continue;
+                    }
+                    byte[] qrBytes;
+                    try {
+                        qrBytes = Base64.getMimeDecoder().decode(cleanBase64);
+                    } catch (Exception e) {
+                        System.err.println("Skipping malformed/invalid QR code base64 segment: " + e.getMessage());
+                        continue;
+                    }
+                    
+                    final int idx = i;
+                    ByteArrayResource qrResource = new ByteArrayResource(qrBytes) {
+                        @Override
+                        public String getFilename() {
+                            return "qrcode_" + idx + ".png";
+                        }
+                    };
+                    
+                    helper.addInline("qrCode_" + i, qrResource, "image/png");
+                }
             }
 
             mailSender.send(message);

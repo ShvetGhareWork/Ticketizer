@@ -57,7 +57,6 @@ export default function SignupPage() {
     }
   };
 
-  // 2. WRAP the initialization in useCallback so it can be safely used in useEffect
   const initializeGoogleAuth = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const google = (window as any).google;
@@ -87,19 +86,35 @@ export default function SignupPage() {
       },
     });
 
+    // Dynamically constrain GIS iframe width to parent container bounds
+    const containerWidth = googleButtonRef.current.offsetWidth || 320;
+    const buttonWidth = Math.min(containerWidth, 400);
+
     google.accounts.id.renderButton(googleButtonRef.current, {
       theme: "outline",
       size: "large",
-      width: 400,
+      width: buttonWidth,
       text: "continue_with",
     });
-  }, [loginWithGoogle, router]); // Dependencies required for useCallback
+  }, [loginWithGoogle, router]);
 
-  // 3. ADD useEffect to check if Google is already loaded when the page mounts
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof window !== "undefined" && (window as any).google) {
       initializeGoogleAuth();
     }
+
+    // Optional: Re-render button on viewport change to maintain correct width
+    const handleResize = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).google && googleButtonRef.current) {
+        googleButtonRef.current.innerHTML = ""; // Clear existing iframe
+        initializeGoogleAuth();
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [initializeGoogleAuth]);
 
   return (
@@ -114,12 +129,12 @@ export default function SignupPage() {
       />
 
       {/* NAVBAR */}
-      <nav className="flex items-center justify-between px-6 lg:px-12 py-6">
+      <nav className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 sm:py-6">
         <div className="flex items-center">
           {/* Logo */}
           <Link
             href="/"
-            className="font-extrabold text-2xl tracking-tight text-blue-600 hover:text-blue-700 transition-colors"
+            className="font-extrabold text-xl sm:text-2xl tracking-tight text-blue-600 hover:text-blue-700 transition-colors"
           >
             Ticketizer
           </Link>
@@ -128,7 +143,7 @@ export default function SignupPage() {
         <div>
           <Link
             href="#"
-            className="text-gray-600 text-sm font-semibold hover:text-gray-900 transition-colors"
+            className="text-gray-600 text-xs sm:text-sm font-semibold hover:text-gray-900 transition-colors p-2"
           >
             Help
           </Link>
@@ -136,31 +151,31 @@ export default function SignupPage() {
       </nav>
 
       {/* MAIN CONTENT - SIGNUP CARD */}
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 pb-12">
-        <div className="w-full max-w-[520px] bg-white rounded-2xl shadow-[0_2px_20px_rgba(0,0,0,0.04)] border border-gray-200 p-8 sm:p-12">
+      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 pb-8 sm:pb-12 w-full">
+        <div className="w-full max-w-[520px] bg-white rounded-2xl shadow-[0_2px_20px_rgba(0,0,0,0.04)] border border-gray-200 p-6 sm:p-10 lg:p-12">
           {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-extrabold text-gray-900 mb-2 tracking-tight">
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2 tracking-tight">
               Create Account
             </h1>
-            <p className="text-sm text-gray-500 font-medium">
+            <p className="text-xs sm:text-sm text-gray-500 font-medium">
               Join Ticketizer today and start your journey.
             </p>
           </div>
 
           {/* Error Message Box */}
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-bold tracking-wide uppercase">
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg text-[10px] sm:text-xs font-bold tracking-wide uppercase">
               {error}
             </div>
           )}
 
           {/* Form */}
-          <form className="space-y-5" onSubmit={handleSubmit}>
+          <form className="space-y-4 sm:space-y-5" onSubmit={handleSubmit}>
             {/* Full Name Field */}
             <div>
               <label
-                className="block text-sm font-semibold text-gray-700 mb-1.5"
+                className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5"
                 htmlFor="fullName"
               >
                 Full Name
@@ -171,7 +186,7 @@ export default function SignupPage() {
                 placeholder="John Doe"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-sm font-medium placeholder-gray-400"
+                className="w-full px-4 py-3.5 sm:py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-sm font-medium placeholder-gray-400"
                 required
                 disabled={loading}
               />
@@ -180,7 +195,7 @@ export default function SignupPage() {
             {/* Email Field */}
             <div>
               <label
-                className="block text-sm font-semibold text-gray-700 mb-1.5"
+                className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5"
                 htmlFor="email"
               >
                 Email Address
@@ -191,18 +206,18 @@ export default function SignupPage() {
                 placeholder="john@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-sm font-medium placeholder-gray-400"
+                className="w-full px-4 py-3.5 sm:py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-sm font-medium placeholder-gray-400"
                 required
                 disabled={loading}
               />
             </div>
 
             {/* Password Grid (Side-by-Side on Desktop, Stacked on Mobile) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
               {/* Password Field */}
               <div>
                 <label
-                  className="block text-sm font-semibold text-gray-700 mb-1.5"
+                  className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5"
                   htmlFor="password"
                 >
                   Password
@@ -213,7 +228,7 @@ export default function SignupPage() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-sm font-medium placeholder-gray-400"
+                  className="w-full px-4 py-3.5 sm:py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-sm font-medium placeholder-gray-400"
                   required
                   disabled={loading}
                 />
@@ -222,7 +237,7 @@ export default function SignupPage() {
               {/* Confirm Password Field */}
               <div>
                 <label
-                  className="block text-sm font-semibold text-gray-700 mb-1.5"
+                  className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5"
                   htmlFor="confirmPassword"
                 >
                   Confirm Password
@@ -233,7 +248,7 @@ export default function SignupPage() {
                   placeholder="••••••••"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-sm font-medium placeholder-gray-400"
+                  className="w-full px-4 py-3.5 sm:py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-sm font-medium placeholder-gray-400"
                   required
                   disabled={loading}
                 />
@@ -248,26 +263,26 @@ export default function SignupPage() {
                   type="checkbox"
                   checked={terms}
                   onChange={(e) => setTerms(e.target.checked)}
-                  className="w-4 h-4 border border-gray-300 rounded bg-white checked:bg-blue-600 checked:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1 transition-colors cursor-pointer"
+                  className="w-5 h-5 sm:w-4 sm:h-4 border border-gray-300 rounded bg-white checked:bg-blue-600 checked:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1 transition-colors cursor-pointer"
                   required
                   disabled={loading}
                 />
               </div>
               <label
                 htmlFor="terms"
-                className="ml-2.5 text-sm font-medium text-gray-600 cursor-pointer"
+                className="ml-3 sm:ml-2.5 text-xs sm:text-sm font-medium text-gray-600 cursor-pointer"
               >
                 I agree to the{" "}
                 <Link
                   href="#"
-                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                  className="text-blue-600 hover:text-blue-800 transition-colors p-1"
                 >
                   Terms of Service
                 </Link>{" "}
                 and{" "}
                 <Link
                   href="#"
-                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                  className="text-blue-600 hover:text-blue-800 transition-colors p-1"
                 >
                   Privacy Policy
                 </Link>
@@ -278,7 +293,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#0D6EFD] text-white py-3.5 rounded-lg font-bold text-sm tracking-wide hover:bg-blue-800 transition-colors shadow-sm mt-4 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-[#0D6EFD] text-white py-3.5 rounded-lg font-bold text-sm tracking-wide hover:bg-blue-800 transition-colors shadow-sm mt-6 sm:mt-4 disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]"
             >
               {loading ? (
                 <>
@@ -292,26 +307,29 @@ export default function SignupPage() {
           </form>
 
           {/* Divider */}
-          <div className="flex items-center gap-3 my-7">
+          <div className="flex items-center gap-3 my-6 sm:my-7">
             <div className="flex-1 h-px bg-gray-200"></div>
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+            <span className="text-[10px] sm:text-xs font-semibold text-gray-400 uppercase tracking-widest">
               OR
             </span>
             <div className="flex-1 h-px bg-gray-200"></div>
           </div>
 
           {/* Google Button Container */}
-          <div className="w-full flex justify-center min-h-[44px] mb-6">
-            <div ref={googleButtonRef}></div>
+          <div className="w-full flex justify-center min-h-[44px] mb-4 sm:mb-6">
+            <div
+              ref={googleButtonRef}
+              className="w-full flex justify-center"
+            ></div>
           </div>
 
           {/* Footer Link */}
           <div className="text-center mt-2">
-            <p className="text-sm text-gray-600 font-medium">
+            <p className="text-xs sm:text-sm text-gray-600 font-medium">
               Already have an account?{" "}
               <Link
                 href="/auth/login"
-                className="text-blue-600 font-bold hover:text-blue-800 transition-colors"
+                className="text-blue-600 font-bold hover:text-blue-800 transition-colors p-1"
               >
                 Sign In
               </Link>
@@ -321,28 +339,40 @@ export default function SignupPage() {
       </main>
 
       {/* FOOTER */}
-      <footer className="bg-[#F8F9FA] border-t border-gray-200">
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-12 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
+      <footer className="bg-[#F8F9FA] border-t border-gray-200 mt-auto">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-12 py-6 sm:py-8 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6">
           <div className="text-center md:text-left">
-            <h2 className="font-extrabold text-xl text-gray-900 mb-1 tracking-tight">
+            <h2 className="font-extrabold text-lg sm:text-xl text-gray-900 mb-1 tracking-tight">
               Ticketizer
             </h2>
-            <p className="text-xs text-gray-500 font-medium">
-              © 2024 Ticketizer Inc. All rights reserved.
+            <p className="text-[10px] sm:text-xs text-gray-500 font-medium">
+              © 2026 Ticketizer Inc. All rights reserved.
             </p>
           </div>
 
-          <div className="flex flex-wrap justify-center md:justify-end gap-6 text-xs font-semibold text-gray-600">
-            <Link href="#" className="hover:text-gray-900 transition-colors">
+          <div className="flex flex-wrap justify-center md:justify-end gap-4 sm:gap-6 text-[10px] sm:text-xs font-semibold text-gray-600">
+            <Link
+              href="#"
+              className="hover:text-gray-900 transition-colors py-1"
+            >
               Privacy Policy
             </Link>
-            <Link href="#" className="hover:text-gray-900 transition-colors">
+            <Link
+              href="#"
+              className="hover:text-gray-900 transition-colors py-1"
+            >
               Terms of Service
             </Link>
-            <Link href="#" className="hover:text-gray-900 transition-colors">
+            <Link
+              href="#"
+              className="hover:text-gray-900 transition-colors py-1"
+            >
               Cookie Settings
             </Link>
-            <Link href="#" className="hover:text-gray-900 transition-colors">
+            <Link
+              href="#"
+              className="hover:text-gray-900 transition-colors py-1"
+            >
               Contact Support
             </Link>
           </div>

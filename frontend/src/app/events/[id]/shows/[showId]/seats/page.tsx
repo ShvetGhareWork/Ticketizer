@@ -2,7 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Clock, ArrowRight, ShieldCheck, X, Accessibility, Crown } from "lucide-react";
+import {
+  Clock,
+  ArrowRight,
+  ShieldCheck,
+  X,
+  Accessibility,
+  Crown,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useApp } from "@/context/AppContext";
@@ -33,14 +40,18 @@ export default function SeatSelectionPage() {
     setCurrentShowId,
   } = useApp();
 
-  const [eventMeta, setEventMeta] = useState<{title?: string, venue?: string, city?: string} | null>(null);
+  const [eventMeta, setEventMeta] = useState<{
+    title?: string;
+    venue?: string;
+    city?: string;
+  } | null>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       try {
-        const stored = sessionStorage.getItem('currentEvent');
+        const stored = sessionStorage.getItem("currentEvent");
         if (stored) {
           setEventMeta(JSON.parse(stored));
         }
@@ -51,99 +62,135 @@ export default function SeatSelectionPage() {
   }, []);
 
   const seatList = Object.values(seats);
-  
+
   const venue = eventMeta?.venue || "";
   const lowerVenue = venue.toLowerCase();
   const title = eventMeta?.title || "";
   const lowerTitle = title.toLowerCase();
 
-  const isSphere = lowerVenue.includes('sphere');
-  const isStadium = lowerVenue.includes('sofi') || lowerVenue.includes('stadium') || lowerVenue.includes('field') || lowerVenue.includes('modi') || lowerVenue.includes('wankhede') || lowerTitle.includes('world cup');
-  const isTheater = lowerVenue.includes('theater') || lowerVenue.includes('comedy') || lowerVenue.includes('club');
+  const isSphere = lowerVenue.includes("sphere");
+  const isStadium =
+    lowerVenue.includes("sofi") ||
+    lowerVenue.includes("stadium") ||
+    lowerVenue.includes("field") ||
+    lowerVenue.includes("modi") ||
+    lowerVenue.includes("wankhede") ||
+    lowerTitle.includes("world cup");
+  const isTheater =
+    lowerVenue.includes("theater") ||
+    lowerVenue.includes("comedy") ||
+    lowerVenue.includes("club");
 
-  const ROWS = seatList.length > 0 
-    ? Array.from(new Set(seatList.map(s => s.row))).sort() 
-    : (isSphere 
-        ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] 
+  const ROWS =
+    seatList.length > 0
+      ? Array.from(new Set(seatList.map((s) => s.row))).sort()
+      : isSphere
+        ? ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]
         : isStadium
-          ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'] 
+          ? [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F",
+              "G",
+              "H",
+              "I",
+              "J",
+              "K",
+              "L",
+              "M",
+              "N",
+            ]
           : isTheater
-            ? ['A', 'B', 'C', 'D', 'E', 'F']
-            : (showId === 1 
-                ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'] 
-                : showId === 2 
-                  ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] 
-                  : ['A', 'B', 'C', 'D', 'E', 'F']
-              )
-      );
+            ? ["A", "B", "C", "D", "E", "F"]
+            : showId === 1
+              ? [
+                  "A",
+                  "B",
+                  "C",
+                  "D",
+                  "E",
+                  "F",
+                  "G",
+                  "H",
+                  "I",
+                  "J",
+                  "K",
+                  "L",
+                  "M",
+                  "N",
+                ]
+              : showId === 2
+                ? ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]
+                : ["A", "B", "C", "D", "E", "F"];
 
-  const COLS = seatList.length > 0 
-    ? Array.from(new Set(seatList.map(s => s.number))).sort((a, b) => a - b)
-    : (isSphere
+  const COLS =
+    seatList.length > 0
+      ? Array.from(new Set(seatList.map((s) => s.number))).sort((a, b) => a - b)
+      : isSphere
         ? Array.from({ length: 15 }, (_, i) => i + 1)
         : isStadium
           ? Array.from({ length: 24 }, (_, i) => i + 1)
           : isTheater
             ? Array.from({ length: 12 }, (_, i) => i + 1)
-            : (showId === 1 
-                ? Array.from({ length: 24 }, (_, i) => i + 1)
-                : showId === 2 
-                  ? Array.from({ length: 15 }, (_, i) => i + 1)
-                  : Array.from({ length: 12 }, (_, i) => i + 1)
-              )
-      );
+            : showId === 1
+              ? Array.from({ length: 24 }, (_, i) => i + 1)
+              : showId === 2
+                ? Array.from({ length: 15 }, (_, i) => i + 1)
+                : Array.from({ length: 12 }, (_, i) => i + 1);
 
-  // Dynamic pricing and tier helper
   const getSeatPriceAndTier = (seatId: string) => {
     if (!seatId) return { price: 80.0, tier: "Standard Tier" };
     const row = seatId.charAt(0);
     const col = parseInt(seatId.slice(1), 10);
-    
+
     if (isSphere) {
-      const isPremium = ['A', 'B', 'C', 'D', 'E'].includes(row) && col >= 6 && col <= 10;
-      return isPremium 
-        ? { price: 500.0, tier: "Premium Recliner" } 
+      const isPremium =
+        ["A", "B", "C", "D", "E"].includes(row) && col >= 6 && col <= 10;
+      return isPremium
+        ? { price: 500.0, tier: "Premium Recliner" }
         : { price: 250.0, tier: "Standard Tier" };
     } else if (isStadium) {
-      const isPremium = ['A', 'B', 'C'].includes(row) && col >= 8 && col <= 17;
-      return isPremium 
-        ? { price: 350.0, tier: "VIP Club Tier" } 
+      const isPremium = ["A", "B", "C"].includes(row) && col >= 8 && col <= 17;
+      return isPremium
+        ? { price: 350.0, tier: "VIP Club Tier" }
         : { price: 150.0, tier: "Standard Tier" };
     } else {
-      const isPremium = ['A', 'B'].includes(row) && col >= 5 && col <= 8;
-      return isPremium 
-        ? { price: 150.0, tier: "Front Row VIP" } 
+      const isPremium = ["A", "B"].includes(row) && col >= 5 && col <= 8;
+      return isPremium
+        ? { price: 150.0, tier: "Front Row VIP" }
         : { price: 80.0, tier: "Standard Tier" };
     }
   };
 
-  const venueName = venue 
-    ? `${venue} (${isSphere ? 'Immersive Sphere Layout' : isStadium ? 'Grand Stadium Layout' : 'Intimate Layout'})` 
-    : (showId === 1 
-        ? "Narendra Modi Stadium (Grand Stadium Layout)" 
-        : showId === 2 
-          ? "Las Vegas Sphere (Immersive Sphere Layout)" 
-          : "Comedy Club Theater (Intimate Layout)");
+  const venueName = venue
+    ? `${venue} (${isSphere ? "Immersive Sphere Layout" : isStadium ? "Grand Stadium Layout" : "Intimate Layout"})`
+    : showId === 1
+      ? "Narendra Modi Stadium (Grand Stadium Layout)"
+      : showId === 2
+        ? "Las Vegas Sphere (Immersive Sphere Layout)"
+        : "Comedy Club Theater (Intimate Layout)";
 
-  const [timeLeft, setTimeLeft] = useState(585); // 09:45 in seconds
+  const [timeLeft, setTimeLeft] = useState(585);
 
   useEffect(() => {
-    // If not authenticated, prompt log
     if (!authToken) {
-      addLog("ERROR", "SECURE SHIELD ACTIVE: Please sign in or register to select seats.");
+      addLog(
+        "ERROR",
+        "SECURE SHIELD ACTIVE: Please sign in or register to select seats.",
+      );
     }
 
     const eventId = params?.id as string;
 
-    // Sync showId and eventId from URL into AppContext if different
     if (showId !== currentShowId || eventId !== currentEventId) {
       setCurrentShowId(showId, eventId);
     } else {
-      // Sync seat status from relational + cache engine
       syncLiveInventory(true);
     }
 
-    // Set up real-time inventory sync intervals
     const intervalId = setInterval(() => {
       syncLiveInventory(false);
     }, 4000);
@@ -172,24 +219,35 @@ export default function SeatSelectionPage() {
       router.push("/auth/login");
       return;
     }
-    
+
     const targetSeat = seats[seatLabel];
     if (!targetSeat) return;
 
-    if (targetSeat.status === "BOOKED" || (targetSeat.status === "LOCKED" && !activeAllocation?.seatLabels?.includes(seatLabel))) {
+    if (
+      targetSeat.status === "BOOKED" ||
+      (targetSeat.status === "LOCKED" &&
+        !activeAllocation?.seatLabels?.includes(seatLabel))
+    ) {
       return;
     }
 
     await selectSeat(seatLabel);
   };
 
-  // Extract selected seat labels
   const selectedSeatsList = activeAllocation?.seatLabels || [];
-  
-  // Dynamic financial calculations
-  const subtotal = selectedSeatsList.reduce((sum, seatId) => sum + getSeatPriceAndTier(seatId).price, 0);
+  const subtotal = selectedSeatsList.reduce(
+    (sum, seatId) => sum + getSeatPriceAndTier(seatId).price,
+    0,
+  );
   const fee = subtotal * FEE_PERCENT;
   const total = subtotal + fee;
+
+  const handleCheckout = () => {
+    if (activeAllocation && activeAllocation.bookingId) {
+      const encodedId = encodeURIComponent(activeAllocation.bookingId);
+      router.push(`/checkout/${encodedId}`);
+    }
+  };
 
   if (!mounted) {
     return (
@@ -197,7 +255,7 @@ export default function SeatSelectionPage() {
         className={`min-h-screen flex flex-col items-center justify-center bg-[#F8F9FB] text-gray-900 ${jakarta.className}`}
       >
         <span className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></span>
-        <span className="text-xs font-bold text-gray-500 tracking-widest uppercase">
+        <span className="text-[10px] sm:text-xs font-bold text-gray-500 tracking-widest uppercase">
           Initializing Dynamic Venue Map...
         </span>
       </div>
@@ -206,57 +264,56 @@ export default function SeatSelectionPage() {
 
   return (
     <div
-      className={`min-h-screen flex flex-col bg-[#F8F9FB] text-gray-900 ${jakarta.className}`}
+      className={`min-h-screen flex flex-col bg-[#F8F9FB] text-gray-900 ${jakarta.className} relative pb-20 lg:pb-0`}
     >
-      {/* NAVBAR */}
       <Header />
 
       <main className="flex-1 max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-12 py-6 lg:py-10">
         {/* EVENT HEADER & TIMER */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 sm:gap-6 mb-6 sm:mb-8">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="bg-[#D3E2FF] text-blue-800 text-[10px] font-extrabold tracking-widest px-2.5 py-1 rounded uppercase">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
+              <span className="bg-[#D3E2FF] text-blue-800 text-[9px] sm:text-[10px] font-extrabold tracking-widest px-2.5 py-1 rounded uppercase">
                 Live Event
               </span>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-gray-900">
-                LIVE VENUE SEATING LAYOUT
+              <h1 className="text-xl sm:text-2xl lg:text-4xl font-extrabold tracking-tight text-gray-900">
+                LIVE VENUE SEATING
               </h1>
             </div>
-            <p className="text-sm sm:text-base text-gray-600 font-medium mt-2">
+            <p className="text-xs sm:text-sm lg:text-base text-gray-600 font-medium mt-1 sm:mt-2">
               Secured Connection • {venueName}
             </p>
           </div>
 
-          <div className="bg-[#F0F4F8] border border-blue-200 rounded-lg px-5 py-3 flex flex-col items-center min-w-[140px]">
-            <span className="text-[9px] font-bold tracking-widest text-gray-500 uppercase mb-1">
+          <div className="bg-[#F0F4F8] border border-blue-200 rounded-lg px-4 sm:px-5 py-2.5 sm:py-3 flex flex-col items-center w-full sm:w-auto sm:min-w-[140px]">
+            <span className="text-[8px] sm:text-[9px] font-bold tracking-widest text-gray-500 uppercase mb-1">
               Session Expires In
             </span>
-            <div className="flex items-center gap-2 text-blue-700 font-bold text-xl font-mono tracking-wider">
-              <Clock size={18} />
+            <div className="flex items-center gap-2 text-blue-700 font-bold text-lg sm:text-xl font-mono tracking-wider">
+              <Clock size={16} className="sm:w-[18px] sm:h-[18px]" />
               {formatTime(timeLeft)}
             </div>
           </div>
         </div>
 
         {/* PROGRESS BAR */}
-        <div className="flex bg-[#F0F4F8] rounded-xl overflow-hidden mb-8 border border-gray-200">
-          <div className="flex-1 bg-[#0D6EFD] text-white py-4 flex items-center justify-center">
-            <span className="text-xs sm:text-sm font-bold tracking-widest uppercase">
+        <div className="flex bg-[#F0F4F8] rounded-xl overflow-hidden mb-6 sm:mb-8 border border-gray-200">
+          <div className="flex-1 bg-[#0D6EFD] text-white py-3 sm:py-4 flex items-center justify-center px-2">
+            <span className="text-[9px] sm:text-xs lg:text-sm font-bold tracking-widest uppercase truncate">
               <span className="opacity-70 mr-1 sm:mr-2 font-mono">01</span>{" "}
               Select Seats
             </span>
           </div>
-          <div className="flex-1 py-4 flex items-center justify-center border-r border-gray-200/50">
-            <span className="text-xs sm:text-sm font-bold tracking-widest uppercase text-gray-400">
+          <div className="flex-1 py-3 sm:py-4 flex items-center justify-center border-r border-gray-200/50 px-2">
+            <span className="text-[9px] sm:text-xs lg:text-sm font-bold tracking-widest uppercase text-gray-400 truncate">
               <span className="opacity-50 mr-1 sm:mr-2 font-mono">02</span>{" "}
               Checkout
             </span>
           </div>
-          <div className="flex-1 py-4 flex items-center justify-center">
-            <span className="text-xs sm:text-sm font-bold tracking-widest uppercase text-gray-400">
+          <div className="flex-1 py-3 sm:py-4 flex items-center justify-center px-2">
+            <span className="text-[9px] sm:text-xs lg:text-sm font-bold tracking-widest uppercase text-gray-400 truncate">
               <span className="opacity-50 mr-1 sm:mr-2 font-mono">03</span>{" "}
-              Confirmation
+              Confirm
             </span>
           </div>
         </div>
@@ -264,36 +321,36 @@ export default function SeatSelectionPage() {
         {/* 12-COLUMN MAIN LAYOUT */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* LEFT: SEAT MAP CONTAINER (8 cols) */}
-          <div className="lg:col-span-8 bg-white border border-gray-200 rounded-2xl p-4 sm:p-8 shadow-sm flex flex-col min-h-[600px]">
+          <div className="lg:col-span-8 bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm flex flex-col min-h-[500px] lg:min-h-[600px]">
             {/* Stage Area */}
-            <div className="w-full bg-[#F0F4F8] border border-gray-200 rounded-lg py-6 sm:py-8 flex items-center justify-center mb-16">
-              <span className="text-xs sm:text-sm font-bold tracking-widest text-gray-500 uppercase">
+            <div className="w-full bg-[#F0F4F8] border border-gray-200 rounded-lg py-4 sm:py-6 lg:py-8 flex items-center justify-center mb-8 sm:mb-12 lg:mb-16">
+              <span className="text-[10px] sm:text-xs lg:text-sm font-bold tracking-widest text-gray-500 uppercase">
                 Pitch / Stage Area
               </span>
             </div>
 
-            {/* Interactive Grid */}
-            <div className="flex-1 overflow-x-auto pb-12 no-scrollbar">
-              <div className="min-w-[600px] flex flex-col items-center mx-auto">
+            {/* Interactive Grid - Fluid Touch Scrolling Enabled */}
+            <div className="flex-1 overflow-x-auto pb-8 sm:pb-12 touch-pan-x touch-pan-y no-scrollbar">
+              <div className="min-w-[580px] lg:min-w-fit flex flex-col items-center mx-auto px-2">
                 {/* Column Numbers */}
-                <div className="flex mb-6 pl-8 gap-1.5 sm:gap-2">
+                <div className="flex mb-4 sm:mb-6 pl-6 sm:pl-8 gap-1.5 sm:gap-2">
                   {COLS.map((col) => {
-                    // Check if it's an aisle column (skip column label for realism)
-                    const isAisleCol = (isSphere && (col === 5 || col === 11)) ||
-                                       (isStadium && (col === 7 || col === 18)) ||
-                                       (isTheater && (col === 4 || col === 9));
+                    const isAisleCol =
+                      (isSphere && (col === 5 || col === 11)) ||
+                      (isStadium && (col === 7 || col === 18)) ||
+                      (isTheater && (col === 4 || col === 9));
                     if (isAisleCol) {
                       return (
                         <div
                           key={`col-aisle-${col}`}
-                          className="w-6 sm:w-7 text-center opacity-0 pointer-events-none"
+                          className="w-5 sm:w-6 lg:w-7 text-center opacity-0 pointer-events-none"
                         />
                       );
                     }
                     return (
                       <div
                         key={`col-${col}`}
-                        className="w-6 sm:w-7 text-center text-[9px] font-bold text-gray-400"
+                        className="w-5 sm:w-6 lg:w-7 text-center text-[8px] sm:text-[9px] font-bold text-gray-400"
                       >
                         {col}
                       </div>
@@ -302,15 +359,14 @@ export default function SeatSelectionPage() {
                 </div>
 
                 {/* Rows Grid */}
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5 sm:gap-3">
                   {ROWS.map((row) => {
-                    // Stadium horizontal aisle row
-                    const isAisleRow = isStadium && row === 'G';
+                    const isAisleRow = isStadium && row === "G";
                     if (isAisleRow) {
                       return (
                         <div
                           key={`row-aisle-${row}`}
-                          className="h-6 flex items-center justify-center text-[9px] font-bold text-gray-300 tracking-widest uppercase border-y border-dashed border-gray-100 my-1 w-full bg-gray-50/50"
+                          className="h-5 sm:h-6 flex items-center justify-center text-[8px] sm:text-[9px] font-bold text-gray-300 tracking-widest uppercase border-y border-dashed border-gray-100 my-1 w-full bg-gray-50/50"
                         >
                           CROSS WALKWAY AISLE
                         </div>
@@ -322,63 +378,84 @@ export default function SeatSelectionPage() {
                         key={`row-${row}`}
                         className="flex items-center gap-1.5 sm:gap-2"
                       >
-                        <div className="w-6 text-[10px] font-bold text-gray-400 text-right pr-2">
+                        <div className="w-6 text-[9px] sm:text-[10px] font-bold text-gray-400 text-right pr-2 flex-shrink-0">
                           {row}
                         </div>
                         {COLS.map((col) => {
                           const seatId = `${row}${col}`;
                           const seat = seats[seatId];
 
-                          // Aisles logic
-                          const isAisle = (isSphere && (col === 5 || col === 11)) ||
-                                          (isStadium && (col === 7 || col === 18)) ||
-                                          (isTheater && (col === 4 || col === 9));
+                          const isAisle =
+                            (isSphere && (col === 5 || col === 11)) ||
+                            (isStadium && (col === 7 || col === 18)) ||
+                            (isTheater && (col === 4 || col === 9));
 
                           if (isAisle) {
                             return (
                               <div
                                 key={`aisle-${row}-${col}`}
-                                className="w-6 h-6 sm:w-7 sm:h-7 opacity-0 pointer-events-none"
+                                className="w-5 h-5 sm:w-6 sm:h-6 lg:w-7 lg:h-7 opacity-0 pointer-events-none flex-shrink-0"
                               />
                             );
                           }
 
-                          const isLocked = seat?.status === "LOCKED" && !selectedSeatsList.includes(seatId);
+                          const isLocked =
+                            seat?.status === "LOCKED" &&
+                            !selectedSeatsList.includes(seatId);
                           const isBooked = seat?.status === "BOOKED";
                           const isSelected = selectedSeatsList.includes(seatId);
-                          
-                          // Custom Tier Configurations
-                          const isWheelchair = (isSphere && row === 'L' && col >= 7 && col <= 9) ||
-                                               (isStadium && row === 'N' && [1, 2, 23, 24].includes(col)) ||
-                                               (isTheater && row === 'F' && (col === 1 || col === 12));
 
-                          const isPremium = (isSphere && ['A', 'B', 'C', 'D', 'E'].includes(row) && col >= 6 && col <= 10) ||
-                                             (isStadium && ['A', 'B', 'C'].includes(row) && col >= 8 && col <= 17) ||
-                                             (isTheater && ['A', 'B'].includes(row) && col >= 5 && col <= 8);
+                          const isWheelchair =
+                            (isSphere && row === "L" && col >= 7 && col <= 9) ||
+                            (isStadium &&
+                              row === "N" &&
+                              [1, 2, 23, 24].includes(col)) ||
+                            (isTheater &&
+                              row === "F" &&
+                              (col === 1 || col === 12));
 
-                          let seatStyles = "bg-white border-gray-300 hover:border-blue-500 hover:scale-105 cursor-pointer text-gray-400";
-                          
+                          const isPremium =
+                            (isSphere &&
+                              ["A", "B", "C", "D", "E"].includes(row) &&
+                              col >= 6 &&
+                              col <= 10) ||
+                            (isStadium &&
+                              ["A", "B", "C"].includes(row) &&
+                              col >= 8 &&
+                              col <= 17) ||
+                            (isTheater &&
+                              ["A", "B"].includes(row) &&
+                              col >= 5 &&
+                              col <= 8);
+
+                          let seatStyles =
+                            "bg-white border-gray-300 hover:border-blue-500 lg:hover:scale-105 cursor-pointer text-gray-400";
+
                           if (isPremium) {
-                            seatStyles = "bg-amber-50 border-amber-400 hover:border-amber-500 hover:bg-amber-100 hover:scale-105 cursor-pointer text-amber-600 shadow-[0_1px_2px_rgba(245,158,11,0.08)]";
+                            seatStyles =
+                              "bg-amber-50 border-amber-400 hover:border-amber-500 hover:bg-amber-100 lg:hover:scale-105 cursor-pointer text-amber-600 shadow-[0_1px_2px_rgba(245,158,11,0.08)]";
                           }
                           if (isWheelchair) {
-                            seatStyles = "bg-sky-50 border-sky-300 hover:border-sky-500 hover:bg-sky-100 hover:scale-105 cursor-pointer text-sky-600 shadow-[0_1px_2px_rgba(14,165,233,0.08)]";
+                            seatStyles =
+                              "bg-sky-50 border-sky-300 hover:border-sky-500 hover:bg-sky-100 lg:hover:scale-105 cursor-pointer text-sky-600 shadow-[0_1px_2px_rgba(14,165,233,0.08)]";
                           }
                           if (isSelected) {
-                            seatStyles = "bg-[#0D6EFD] border-[#0D6EFD] shadow-[0_0_8px_rgba(13,110,253,0.4)] z-10 scale-110 text-white cursor-pointer";
+                            seatStyles =
+                              "bg-[#0D6EFD] border-[#0D6EFD] shadow-[0_0_8px_rgba(13,110,253,0.4)] z-10 scale-110 text-white cursor-pointer";
                           }
                           if (isLocked) {
-                            seatStyles = "bg-amber-300 border-amber-300 cursor-not-allowed opacity-75 text-amber-900";
+                            seatStyles =
+                              "bg-amber-300 border-amber-300 cursor-not-allowed opacity-75 text-amber-900";
                           }
                           if (isBooked) {
-                            seatStyles = "bg-gray-100 border-gray-200 cursor-not-allowed relative overflow-hidden text-gray-300";
+                            seatStyles =
+                              "bg-gray-100 border-gray-200 cursor-not-allowed relative overflow-hidden text-gray-300";
                           }
 
-                          // Sphere dynamic curve layout transform
                           let seatTransform = undefined;
                           if (isSphere) {
                             const colDiff = col - 8;
-                            const sphereOffsetY = (colDiff * colDiff) * 1.6;
+                            const sphereOffsetY = colDiff * colDiff * 1.6;
                             const sphereRotate = colDiff * 2.2;
                             seatTransform = {
                               transform: `translateY(${sphereOffsetY}px) rotate(${sphereRotate}deg)`,
@@ -390,12 +467,12 @@ export default function SeatSelectionPage() {
                               key={seatId}
                               onClick={() => handleSeatClick(seatId)}
                               style={seatTransform}
-                              className={`w-6 h-6 sm:w-7 sm:h-7 border rounded-[4px] transition-all duration-200 flex items-center justify-center group ${seatStyles}`}
+                              className={`w-5 h-5 sm:w-6 sm:h-6 lg:w-7 lg:h-7 border rounded-[4px] sm:rounded-md transition-all duration-200 flex items-center justify-center group flex-shrink-0 ${seatStyles}`}
                               title={`Seat ${seatId} (${isPremium ? "Premium" : isWheelchair ? "Wheelchair" : "Standard"})`}
                             >
                               {isBooked ? (
                                 <svg
-                                  className="w-3.5 h-3.5 text-gray-300 absolute"
+                                  className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-300 absolute"
                                   viewBox="0 0 24 24"
                                   fill="none"
                                   stroke="currentColor"
@@ -404,11 +481,13 @@ export default function SeatSelectionPage() {
                                   <path d="M18 6L6 18M6 6l12 12" />
                                 </svg>
                               ) : isSelected ? (
-                                <span className="text-[8px] font-extrabold leading-none">{col}</span>
+                                <span className="text-[7px] sm:text-[8px] font-extrabold leading-none">
+                                  {col}
+                                </span>
                               ) : isPremium ? (
-                                <Crown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-500" />
+                                <Crown className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-amber-500" />
                               ) : isWheelchair ? (
-                                <Accessibility className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-sky-500" />
+                                <Accessibility className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-sky-500" />
                               ) : null}
                             </div>
                           );
@@ -421,46 +500,40 @@ export default function SeatSelectionPage() {
             </div>
 
             {/* Legend */}
-            <div className="flex flex-wrap justify-center sm:justify-between items-center gap-4 pt-8 border-t border-gray-100 mt-auto">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-white border border-gray-300 rounded-[3px]"></div>
-                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
+            <div className="flex flex-wrap justify-center sm:justify-between items-center gap-3 sm:gap-4 pt-6 sm:pt-8 border-t border-gray-100 mt-auto">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border border-gray-300 rounded-[3px]"></div>
+                <span className="text-[8px] sm:text-[9px] font-bold tracking-widest text-gray-600 uppercase">
                   Available
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-amber-50 border border-amber-400 rounded-[3px] flex items-center justify-center">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-amber-50 border border-amber-400 rounded-[3px] flex items-center justify-center">
                   <Crown className="w-2 h-2 text-amber-500" />
                 </div>
-                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
-                  Premium Tier
+                <span className="text-[8px] sm:text-[9px] font-bold tracking-widest text-gray-600 uppercase">
+                  Premium
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-sky-50 border border-sky-300 rounded-[3px] flex items-center justify-center">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-sky-50 border border-sky-300 rounded-[3px] flex items-center justify-center">
                   <Accessibility className="w-2 h-2 text-sky-500" />
                 </div>
-                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
+                <span className="text-[8px] sm:text-[9px] font-bold tracking-widest text-gray-600 uppercase">
                   Accessible
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-[#0D6EFD] rounded-[3px]"></div>
-                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-[#0D6EFD] rounded-[3px]"></div>
+                <span className="text-[8px] sm:text-[9px] font-bold tracking-widest text-gray-600 uppercase">
                   Selected
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-amber-300 rounded-[3px] opacity-75"></div>
-                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
-                  Locked
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded-[3px] flex items-center justify-center">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-gray-100 border border-gray-200 rounded-[3px] flex items-center justify-center">
                   <X size={10} className="text-gray-300" />
                 </div>
-                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
+                <span className="text-[8px] sm:text-[9px] font-bold tracking-widest text-gray-600 uppercase">
                   Booked
                 </span>
               </div>
@@ -468,45 +541,46 @@ export default function SeatSelectionPage() {
           </div>
 
           {/* RIGHT: ORDER SUMMARY (4 cols, Sticky) */}
-          <div className="lg:col-span-4 flex flex-col gap-6 relative">
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 sm:p-8 shadow-sm lg:sticky lg:top-24">
-              <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight mb-1">
+          {/* RIGHT: ORDER SUMMARY (4 cols, Sticky Container) */}
+          <div className="lg:col-span-4 flex flex-col gap-6 lg:sticky lg:top-24">
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 lg:p-8 shadow-sm">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-extrabold text-gray-900 tracking-tight mb-1">
                 YOUR SELECTION
               </h2>
-              <p className="text-xs text-gray-500 font-medium mb-6">
+              <p className="text-[10px] sm:text-xs text-gray-500 font-medium mb-4 sm:mb-6">
                 Seats are held for 10 minutes
               </p>
 
               {/* Selected Seats List */}
-              <div className="min-h-[120px] mb-6">
+              <div className="min-h-[100px] sm:min-h-[120px] mb-4 sm:mb-6">
                 {selectedSeatsList.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-gray-400 text-sm font-medium italic">
+                  <div className="h-full flex items-center justify-center text-gray-400 text-xs sm:text-sm font-medium italic py-8">
                     No seats selected
                   </div>
                 ) : (
-                  <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2 no-scrollbar">
+                  <div className="space-y-2.5 sm:space-y-3 max-h-[180px] sm:max-h-[200px] overflow-y-auto pr-2 no-scrollbar touch-pan-y">
                     {selectedSeatsList.map((seat) => {
                       const { price, tier } = getSeatPriceAndTier(seat);
                       return (
                         <div
                           key={seat}
-                          className="flex justify-between items-center bg-[#F8F9FB] p-3 rounded-lg border border-gray-100"
+                          className="flex justify-between items-center bg-[#F8F9FB] p-2.5 sm:p-3 rounded-lg border border-gray-100"
                         >
                           <div>
-                            <p className="text-sm font-bold text-gray-900">
+                            <p className="text-xs sm:text-sm font-bold text-gray-900">
                               Seat {seat}
                             </p>
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                            <p className="text-[9px] sm:text-[10px] text-gray-500 font-bold uppercase tracking-widest">
                               {tier}
                             </p>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className="font-mono font-bold text-blue-700">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <span className="font-mono font-bold text-blue-700 text-sm sm:text-base">
                               ${price.toFixed(2)}
                             </span>
                             <button
                               onClick={() => handleSeatClick(seat)}
-                              className="text-gray-400 hover:text-red-500 transition-colors"
+                              className="text-gray-400 hover:text-red-500 transition-colors p-1 -mr-1"
                             >
                               <X size={16} />
                             </button>
@@ -519,17 +593,17 @@ export default function SeatSelectionPage() {
               </div>
 
               {/* Calculations */}
-              <div className="border-t border-gray-200 pt-6 space-y-4 mb-6">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="font-bold tracking-widest text-gray-600 uppercase text-[11px]">
+              <div className="border-t border-gray-200 pt-4 sm:pt-6 space-y-3 sm:space-y-4 mb-5 sm:mb-6">
+                <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="font-bold tracking-widest text-gray-600 uppercase text-[10px] sm:text-[11px]">
                     Subtotal
                   </span>
                   <span className="font-mono font-medium text-gray-600">
                     ${subtotal.toFixed(2)}
                   </span>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="font-bold tracking-widest text-gray-600 uppercase text-[11px]">
+                <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="font-bold tracking-widest text-gray-600 uppercase text-[10px] sm:text-[11px]">
                     Fee (5%)
                   </span>
                   <span className="font-mono font-medium text-gray-600">
@@ -539,44 +613,46 @@ export default function SeatSelectionPage() {
               </div>
 
               {/* Total */}
-              <div className="bg-[#F0F4F8] rounded-xl p-5 flex justify-between items-center mb-6 border border-gray-200">
-                <span className="text-lg font-extrabold tracking-tight text-gray-900">
+              <div className="bg-[#F0F4F8] rounded-xl p-4 sm:p-5 flex justify-between items-center mb-5 sm:mb-6 border border-gray-200">
+                <span className="text-base sm:text-lg font-extrabold tracking-tight text-gray-900">
                   TOTAL
                 </span>
-                <span className="text-2xl font-black text-[#0D6EFD] font-mono">
+                <span className="text-xl sm:text-2xl font-black text-[#0D6EFD] font-mono">
                   ${total.toFixed(2)}
                 </span>
               </div>
 
-              {activeAllocation && activeAllocation.bookingId ? (
-                <button
-                  onClick={() => {
-                    // URL-encode the comma-joined booking IDs for safe routing
-                    const encodedId = encodeURIComponent(activeAllocation.bookingId);
-                    router.push(`/checkout/${encodedId}`);
-                  }}
-                  className="w-full py-4 bg-[#0D6EFD] text-white hover:bg-blue-700 cursor-pointer rounded-lg font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-2 transition-all shadow-md"
-                >
-                  Proceed to Checkout <ArrowRight size={18} />
-                </button>
-              ) : (
-                <button
-                  disabled
-                  className="w-full py-4 bg-gray-200 text-gray-400 cursor-not-allowed rounded-lg font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-2 transition-all shadow-none"
-                >
-                  Proceed to Checkout <ArrowRight size={18} />
-                </button>
-              )}
+              {/* Desktop Checkout CTA */}
+              <div className="hidden lg:block">
+                {activeAllocation && activeAllocation.bookingId ? (
+                  <button
+                    onClick={handleCheckout}
+                    className="w-full py-4 bg-[#0D6EFD] text-white hover:bg-blue-700 cursor-pointer rounded-lg font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-2 transition-all shadow-md min-h-[48px]"
+                  >
+                    Proceed to Checkout <ArrowRight size={18} />
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full py-4 bg-gray-200 text-gray-400 cursor-not-allowed rounded-lg font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-2 transition-all shadow-none min-h-[48px]"
+                  >
+                    Proceed to Checkout <ArrowRight size={18} />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Trust Badge */}
-            <div className="bg-[#F0F4F8] border border-blue-100 rounded-xl p-5 flex items-start gap-4 shadow-sm lg:sticky lg:top-[500px]">
-              <ShieldCheck size={24} className="text-blue-600 flex-shrink-0" />
+            <div className="bg-[#F0F4F8] border border-blue-100 rounded-xl p-4 sm:p-5 flex items-start gap-3 sm:gap-4 shadow-sm">
+              <ShieldCheck
+                size={20}
+                className="sm:w-6 sm:h-6 text-blue-600 flex-shrink-0"
+              />
               <div>
-                <h4 className="text-[11px] font-bold tracking-widest text-gray-900 uppercase mb-1">
+                <h4 className="text-[10px] sm:text-[11px] font-bold tracking-widest text-gray-900 uppercase mb-1">
                   Secure Ticketing
                 </h4>
-                <p className="text-[10px] text-gray-600 font-medium leading-relaxed">
+                <p className="text-[9px] sm:text-[10px] text-gray-600 font-medium leading-relaxed">
                   Ticketizer ensures authentic tickets with dynamic QR
                   technology. Resale restricted to official marketplace.
                 </p>
@@ -585,6 +661,30 @@ export default function SeatSelectionPage() {
           </div>
         </div>
       </main>
+
+      {/* MOBILE STICKY BOTTOM CTA (Floating Action Bar) */}
+      {selectedSeatsList.length > 0 && (
+        <div className="lg:hidden fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4 pb-6 sm:pb-4 shadow-[0_-8px_20px_-5px_rgba(0,0,0,0.1)] z-50 animate-in slide-in-from-bottom-full duration-300">
+          <div className="flex justify-between items-center mb-3">
+            <span className="font-extrabold text-gray-900 text-base">
+              Total:{" "}
+              <span className="font-mono text-blue-700">
+                ${total.toFixed(2)}
+              </span>
+            </span>
+            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest">
+              {selectedSeatsList.length} Seat
+              {selectedSeatsList.length > 1 ? "s" : ""} Selected
+            </span>
+          </div>
+          <button
+            onClick={handleCheckout}
+            className="w-full py-3.5 bg-[#0D6EFD] text-white hover:bg-blue-700 cursor-pointer rounded-lg font-bold text-xs sm:text-sm tracking-widest uppercase flex items-center justify-center gap-2 transition-all shadow-md min-h-[48px]"
+          >
+            Proceed to Checkout <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
 
       <style
         dangerouslySetInnerHTML={{

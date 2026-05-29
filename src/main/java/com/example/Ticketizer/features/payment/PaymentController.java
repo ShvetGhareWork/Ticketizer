@@ -33,11 +33,17 @@ public class PaymentController {
                     "txn_sim_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12),
                     "SUCCESS"
             );
-            settlementService.fulfillOrder(request);
+            settlementService.fulfillOrder(request, false); // Settle, but do not send individual emails
         }
+
+        if (references.length > 0) {
+            settlementService.publishUnifiedNotification(references); // Send a single consolidated email
+        }
+
         return ResponseEntity.ok(Map.of(
                 "status", "SUCCESS",
                 "message", "Simulated settlement complete for booking reference list: " + bookingRef
         ));
     }
+
 }

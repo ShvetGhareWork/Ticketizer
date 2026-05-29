@@ -18,18 +18,22 @@ export default function MyBookingsPage() {
   const router = useRouter();
   const [customBookings, setCustomBookings] = useState<any[]>([]);
 
-  const isRealBooking = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
+  const isRealBooking = (id: string) => /^[0-9a-f-,%]+$/i.test(id);
 
   useEffect(() => {
     const saved = localStorage.getItem("tkz_bookings");
     if (saved) {
       const parsedBookings = JSON.parse(saved).map((b: any) => {
-        if (b && (b.title === "Live Event Booking" || b.venue === "Venue TBA")) {
+        if (
+          b &&
+          (b.title === "Live Event Booking" || b.venue === "Venue TBA")
+        ) {
           b.title = "Inception (Re-Release)";
           b.date = "Monday, June 1, 2026 • 6:00 PM";
           b.venue = "Narendra Modi Stadium, Ahmedabad";
           b.status = "CONFIRMED";
-          b.image = "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
+          b.image =
+            "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
         }
         return b;
       });
@@ -39,87 +43,154 @@ export default function MyBookingsPage() {
         try {
           const promises = parsedBookings.map(async (b: any) => {
             if (!b || !b.id) return b;
-            
+
             if (!isRealBooking(b.id)) {
               if (b.title === "Live Event Booking" || b.venue === "Venue TBA") {
                 b.title = "Inception (Re-Release)";
                 b.date = "Monday, June 1, 2026 • 6:00 PM";
                 b.venue = "Narendra Modi Stadium, Ahmedabad";
                 b.status = "CONFIRMED";
-                b.image = "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
+                b.image =
+                  "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
               }
               return b;
             }
 
             try {
-              const res = await fetch(`http://localhost:8080/api/v1/bookings/${b.id}`, {
-                headers: {
-                  "Authorization": `Bearer ${localStorage.getItem("authToken") || ""}`
-                }
-              });
-              if (res.ok) {
-                const data = await res.json();
-
-                // If the backend returned a temporary PENDING context without relational details,
-                // preserve and enrich our client-cached ticket representation!
-                if (data && data.status === "PENDING" && !data.eventTitle) {
-                  const enrichedB = { ...b };
-                  if (enrichedB.title === "Live Event Booking" || enrichedB.venue === "Venue TBA") {
-                    enrichedB.title = "Inception (Re-Release)";
-                    enrichedB.date = "Monday, June 1, 2026 • 6:00 PM";
-                    enrichedB.venue = "Narendra Modi Stadium, Ahmedabad";
-                    enrichedB.status = "CONFIRMED";
-                    enrichedB.image = "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
-                  }
-                  return enrichedB;
-                }
-                
-                let dateStr = data.startTime || b.date;
-                if (data && data.startTime) {
-                  try {
-                    const d = new Date(data.startTime);
-                    if (!isNaN(d.getTime())) {
-                      dateStr = d.toLocaleDateString("en-US", {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      }) + " • " + d.toLocaleTimeString("en-US", {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                      });
+              const refs = b.id.split(",");
+              const fetchPromises = refs.map((ref: string) =>
+                fetch(`http://localhost:8080/api/v1/bookings/${ref}`, {
+                  headers: {
+                    Authorization: `Bearer ${localStorage.getItem("authToken") || ""}`,
+                  },
+                })
+                  .then(async (res) => {
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data && data.eventTitle) return data;
                     }
-                  } catch (e) { /* ignore */ }
+                    return null;
+                  })
+                  .catch(() => null),
+              );
+
+              const results = await Promise.all(fetchPromises);
+              const validResults = results.filter(Boolean);
+
+              if (validResults.length > 0) {
+                const firstValid = validResults[0];
+                const allConfirmed = validResults.every(
+                  (data) => data.status === "CONFIRMED",
+                );
+                const anyCancelled = validResults.some(
+                  (data) =>
+                    data.status === "CANCELLED" || data.status === "EXPIRED",
+                );
+                const status = allConfirmed
+                  ? "CONFIRMED"
+                  : anyCancelled
+                    ? "CANCELLED"
+                    : "PENDING";
+
+                const totalPrice = validResults.reduce(
+                  (sum, r) => sum + (r.price || 150.0),
+                  0,
+                );
+                const seatNumbers = validResults
+                  .map((r) => r.seatNumber)
+                  .join(", ");
+
+                let dateStr = firstValid.startTime || b.date;
+                if (firstValid.startTime) {
+                  try {
+                    const d = new Date(firstValid.startTime);
+                    if (!isNaN(d.getTime())) {
+                      dateStr =
+                        d.toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        }) +
+                        " • " +
+                        d.toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        });
+                    }
+                  } catch (e) {
+                    /* ignore */
+                  }
                 }
 
-                const seatLabelsStr = (data && data.seatNumber) || (b.seats && typeof b.seats === 'string' ? b.seats.split(" · ")[0] : "A12");
+                let finalImage = firstValid.imageUrl || b.image;
+                if (
+                  !finalImage ||
+                  finalImage.includes("photo-1540747913346-19e32dc3e97e")
+                ) {
+                  const titleLower = (
+                    firstValid.eventTitle ||
+                    b.title ||
+                    ""
+                  ).toLowerCase();
+                  if (titleLower.includes("imagine dragons")) {
+                    finalImage =
+                      "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&q=80&w=400";
+                  } else if (titleLower.includes("eagles")) {
+                    finalImage =
+                      "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&q=80&w=400";
+                  } else if (
+                    titleLower.includes("miracles") ||
+                    titleLower.includes("spinners")
+                  ) {
+                    finalImage =
+                      "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&q=80&w=400";
+                  } else if (
+                    firstValid.venue?.toLowerCase().includes("sphere")
+                  ) {
+                    finalImage =
+                      "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=400";
+                  } else if (
+                    firstValid.venue?.toLowerCase().includes("theater") ||
+                    firstValid.venue?.toLowerCase().includes("comedy")
+                  ) {
+                    finalImage =
+                      "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&q=80&w=400";
+                  } else {
+                    finalImage =
+                      "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=400";
+                  }
+                }
 
                 return {
                   id: b.id,
-                  title: (data && data.eventTitle) || (b.title === "Live Event Booking" ? "Inception (Re-Release)" : b.title),
-                  date: (data && data.startTime ? dateStr : (b.date === "Upcoming" ? "Monday, June 1, 2026 • 6:00 PM" : b.date)),
-                  venue: (data && data.venue) || (b.venue === "Venue TBA" ? "Narendra Modi Stadium, Ahmedabad" : b.venue),
-                  seats: `${seatLabelsStr} · Standard`,
-                  price: `$${(((data && data.price) || 150.0) * 1.05).toFixed(2)}`,
-                  status: (data && data.status) || b.status || "CONFIRMED",
-                  image: b.image || (data && data.venue?.toLowerCase().includes("sphere")
-                    ? "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=400"
-                    : data && (data.venue?.toLowerCase().includes("theater") || data.venue?.toLowerCase().includes("comedy"))
-                      ? "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&q=80&w=400"
-                      : "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400"),
+                  title: firstValid.eventTitle || b.title,
+                  date: dateStr,
+                  venue: firstValid.venue || b.venue,
+                  seats: `${seatNumbers} · Standard`,
+                  price: `$${(totalPrice * 1.05).toFixed(2)}`,
+                  status: status,
+                  image: finalImage,
                 };
               }
             } catch (err) {
-              console.warn(`Failed to reload booking details for ${b.id}:`, err);
+              console.warn(
+                `Failed to reload booking details for ${b.id}:`,
+                err,
+              );
             }
-            
-            if (b && (b.title === "Live Event Booking" || b.venue === "Venue TBA")) {
+
+            if (
+              b &&
+              (b.title === "Live Event Booking" || b.venue === "Venue TBA")
+            ) {
               b.title = "Inception (Re-Release)";
               b.date = "Monday, June 1, 2026 • 6:00 PM";
               b.venue = "Narendra Modi Stadium, Ahmedabad";
               b.status = "CONFIRMED";
-              b.image = "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
+              b.image =
+                "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
             }
             return b;
           });
@@ -175,8 +246,6 @@ export default function MyBookingsPage() {
 
   const bookings = [...customBookings, ...mockBookings];
 
-
-
   return (
     <div
       className={`min-h-screen flex flex-col bg-[#F8F9FB] text-gray-900 ${jakarta.className}`}
@@ -185,26 +254,26 @@ export default function MyBookingsPage() {
       <Header />
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 max-w-[1200px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+      <main className="flex-1 max-w-[1200px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12">
         {/* Header Section */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 sm:gap-4 mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-gray-900 tracking-tight">
             My Bookings
           </h1>
-          <p className="text-sm sm:text-base text-gray-500 italic font-medium">
+          <p className="text-xs sm:text-sm lg:text-base text-gray-500 italic font-medium">
             Seats don't wait. Tickets secured.
           </p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-6 sm:gap-8 border-b border-gray-200 mb-8 overflow-x-auto no-scrollbar">
-          <button className="text-blue-600 border-b-2 border-blue-600 pb-3 text-xs sm:text-sm font-bold tracking-widest uppercase whitespace-nowrap">
+        {/* Tabs - Enabled fluid touch panning */}
+        <div className="flex gap-6 sm:gap-8 border-b border-gray-200 mb-6 sm:mb-8 overflow-x-auto no-scrollbar touch-pan-x">
+          <button className="text-blue-600 border-b-2 border-blue-600 pb-3 pt-2 text-xs sm:text-sm font-bold tracking-widest uppercase whitespace-nowrap">
             Upcoming
           </button>
-          <button className="text-gray-500 hover:text-gray-900 pb-3 text-xs sm:text-sm font-bold tracking-widest uppercase transition-colors whitespace-nowrap">
+          <button className="text-gray-500 hover:text-gray-900 pb-3 pt-2 text-xs sm:text-sm font-bold tracking-widest uppercase transition-colors whitespace-nowrap">
             Past
           </button>
-          <button className="text-gray-500 hover:text-gray-900 pb-3 text-xs sm:text-sm font-bold tracking-widest uppercase transition-colors whitespace-nowrap">
+          <button className="text-gray-500 hover:text-gray-900 pb-3 pt-2 text-xs sm:text-sm font-bold tracking-widest uppercase transition-colors whitespace-nowrap">
             Cancelled
           </button>
         </div>
@@ -214,10 +283,10 @@ export default function MyBookingsPage() {
           {bookings.map((booking) => (
             <div
               key={booking.id}
-              className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md hover:border-gray-300 transition-all flex flex-col lg:flex-row p-4 gap-4 lg:gap-6 group"
+              className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md hover:border-gray-300 transition-all flex flex-col md:flex-row p-4 sm:p-5 gap-4 md:gap-6 group"
             >
               {/* Event Image */}
-              <div className="w-full lg:w-[160px] h-[160px] flex-shrink-0">
+              <div className="w-full md:w-[140px] lg:w-[160px] h-48 md:h-[140px] lg:h-[160px] flex-shrink-0">
                 <img
                   src={booking.image}
                   alt={booking.title}
@@ -226,22 +295,28 @@ export default function MyBookingsPage() {
               </div>
 
               {/* Main Content Area */}
-              <div className="flex-1 flex flex-col lg:flex-row justify-between gap-6 py-1">
+              <div className="flex-1 flex flex-col md:flex-row justify-between gap-4 lg:gap-6 py-1">
                 {/* Event Details */}
                 <div className="flex-1 flex flex-col justify-center">
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3">
+                  <h3 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-2 sm:mb-3">
                     {booking.title}
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5 sm:space-y-2">
                     <div className="flex items-center gap-2 text-gray-600">
-                      <Calendar size={16} className="text-gray-400" />
-                      <span className="text-sm font-medium">
+                      <Calendar
+                        size={16}
+                        className="text-gray-400 flex-shrink-0"
+                      />
+                      <span className="text-xs sm:text-sm font-medium line-clamp-1">
                         {booking.date}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-600">
-                      <MapPin size={16} className="text-gray-400" />
-                      <span className="text-sm font-medium">
+                      <MapPin
+                        size={16}
+                        className="text-gray-400 flex-shrink-0"
+                      />
+                      <span className="text-xs sm:text-sm font-medium line-clamp-1">
                         {booking.venue}
                       </span>
                     </div>
@@ -249,31 +324,31 @@ export default function MyBookingsPage() {
                 </div>
 
                 {/* Seat Details */}
-                <div className="lg:w-[200px] flex flex-col justify-center lg:items-start flex-shrink-0">
-                  <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-1">
+                <div className="md:w-[160px] lg:w-[200px] flex flex-col justify-center md:items-start flex-shrink-0 mt-2 md:mt-0">
+                  <p className="text-[9px] sm:text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-1">
                     Seats
                   </p>
-                  <p className="text-sm font-bold text-gray-900 mb-2">
+                  <p className="text-xs sm:text-sm font-bold text-gray-900 mb-1.5 sm:mb-2 line-clamp-2">
                     {booking.seats}
                   </p>
-                  <p className="text-[11px] font-mono text-gray-400 tracking-wide">
+                  <p className="text-[10px] sm:text-[11px] font-mono text-gray-400 tracking-wide break-all">
                     #{booking.id}
                   </p>
                 </div>
               </div>
 
               {/* Desktop Dashed Divider */}
-              <div className="hidden lg:block w-px border-l border-dashed border-gray-300 my-2"></div>
+              <div className="hidden md:block w-px border-l border-dashed border-gray-300 my-2"></div>
               {/* Mobile Dashed Divider */}
-              <div className="block lg:hidden h-px w-full border-t border-dashed border-gray-200 my-2"></div>
+              <div className="block md:hidden h-px w-full border-t border-dashed border-gray-200 my-1"></div>
 
               {/* Action Area (Status, Price, View Ticket) */}
-              <div className="lg:w-[180px] flex flex-row lg:flex-col justify-between items-center lg:items-end flex-shrink-0 py-1">
-                <div className="flex lg:flex-col justify-between lg:items-end items-center w-full lg:w-auto gap-3 lg:gap-2">
-                  <span className="bg-[#1860D4] text-white text-[9px] font-bold px-2 py-1 rounded-[4px] uppercase tracking-wider">
+              <div className="md:w-[140px] lg:w-[180px] flex flex-row md:flex-col justify-between items-center md:items-end flex-shrink-0 py-1">
+                <div className="flex md:flex-col justify-between md:items-end items-center w-auto gap-3 md:gap-2">
+                  <span className="bg-[#1860D4] text-white text-[8px] sm:text-[9px] font-bold px-2 py-1 rounded-[4px] uppercase tracking-wider">
                     {booking.status}
                   </span>
-                  <span className="text-blue-700 font-medium text-lg lg:mt-1">
+                  <span className="text-blue-700 font-medium text-base sm:text-lg md:mt-1">
                     {booking.price}
                   </span>
                 </div>
@@ -283,10 +358,12 @@ export default function MyBookingsPage() {
                     if (isRealBooking(booking.id)) {
                       router.push(`/booking/${booking.id}/confirmation`);
                     } else {
-                      alert(`Booking Reference: ${booking.id}\nStatus: ${booking.status}`);
+                      alert(
+                        `Booking Reference: ${booking.id}\nStatus: ${booking.status}`,
+                      );
                     }
                   }}
-                  className="text-[11px] font-bold tracking-widest text-blue-600 uppercase flex items-center gap-1.5 hover:text-blue-800 transition-colors group-hover:translate-x-1 duration-300"
+                  className="text-[10px] sm:text-[11px] font-bold tracking-widest text-blue-600 uppercase flex items-center justify-center gap-1.5 hover:text-blue-800 transition-colors group-hover:translate-x-1 duration-300 min-h-[44px] md:min-h-0 px-2 sm:px-0"
                 >
                   VIEW TICKET <ArrowRight size={14} />
                 </button>
@@ -298,8 +375,8 @@ export default function MyBookingsPage() {
 
       {/* FOOTER */}
       <footer className="bg-white border-t border-gray-200 mt-auto">
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-12 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2 font-extrabold text-lg text-blue-900 tracking-tight">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-12 py-6 sm:py-8 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6">
+          <div className="flex items-center gap-2 font-extrabold text-base sm:text-lg text-blue-900 tracking-tight">
             <svg
               width="18"
               height="18"
@@ -319,21 +396,33 @@ export default function MyBookingsPage() {
             Ticketizer
           </div>
 
-          <div className="text-center text-xs text-gray-500 font-medium">
-            © 2024 Ticketizer. Seats don't wait.
+          <div className="text-center text-[10px] sm:text-xs text-gray-500 font-medium">
+            © 2026 Ticketizer. Seats don't wait.
           </div>
 
-          <div className="flex flex-wrap justify-center gap-6 text-xs font-semibold text-gray-600">
-            <Link href="#" className="hover:text-gray-900 transition-colors">
+          <div className="flex flex-wrap justify-center gap-4 sm:gap-6 text-[10px] sm:text-xs font-semibold text-gray-600">
+            <Link
+              href="#"
+              className="hover:text-gray-900 transition-colors py-1"
+            >
               Help
             </Link>
-            <Link href="#" className="hover:text-gray-900 transition-colors">
+            <Link
+              href="#"
+              className="hover:text-gray-900 transition-colors py-1"
+            >
               Contact
             </Link>
-            <Link href="#" className="hover:text-gray-900 transition-colors">
+            <Link
+              href="#"
+              className="hover:text-gray-900 transition-colors py-1"
+            >
               Terms
             </Link>
-            <Link href="#" className="hover:text-gray-900 transition-colors">
+            <Link
+              href="#"
+              className="hover:text-gray-900 transition-colors py-1"
+            >
               Privacy
             </Link>
           </div>

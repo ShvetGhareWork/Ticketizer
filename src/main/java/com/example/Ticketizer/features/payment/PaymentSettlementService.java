@@ -31,8 +31,13 @@ public class PaymentSettlementService {
 
     @Transactional
     public void fulfillOrder(PaymentCallbackRequest request) {
-        log.info("Processing settlement for booking ref: {}. Status: {}", 
-                request.bookingReference(), request.paymentStatus());
+        fulfillOrder(request, true);
+    }
+
+    @Transactional
+    public void fulfillOrder(PaymentCallbackRequest request, boolean publishEmail) {
+        log.info("Processing settlement for booking ref: {}. Status: {}, PublishEmail: {}", 
+                request.bookingReference(), request.paymentStatus(), publishEmail);
 
         // 1. Locate the target pending asset ledger record with a retry loop to handle eventual consistency (Kafka consumer lag)
         Booking booking = null;
@@ -91,22 +96,24 @@ public class PaymentSettlementService {
             
             log.info("State convergence complete. Secure entry QR token appended to booking reference {}.", finalBooking.getBookingReference());
 
-            // Retrieve User details to populate the notification payload
-            User user = userRepository.findById(finalBooking.getUserId())
-                    .orElseThrow(() -> new IllegalArgumentException("User not found for ID: " + finalBooking.getUserId()));
+            if (publishEmail) {
+                // Retrieve User details to populate the notification payload
+                User user = userRepository.findById(finalBooking.getUserId())
+                        .orElseThrow(() -> new IllegalArgumentException("User not found for ID: " + finalBooking.getUserId()));
 
-            TicketNotificationEvent notificationEvent = new TicketNotificationEvent(
-                    finalBooking.getBookingReference(),
-                    user.getEmail(),
-                    user.getFullName(),
-                    finalBooking.getCustomEventTitle() != null ? finalBooking.getCustomEventTitle() : finalBooking.getShow().getEvent().getTitle(),
-                    finalBooking.getSeat().getSeatNumber(),
-                    finalBooking.getCustomStartTime() != null ? finalBooking.getCustomStartTime() : (finalBooking.getShow().getStartTime() != null ? finalBooking.getShow().getStartTime().toString() : java.time.Instant.now().toString()),
-                    base64QrImage
-            );
+                TicketNotificationEvent notificationEvent = new TicketNotificationEvent(
+                        finalBooking.getBookingReference(),
+                        user.getEmail(),
+                        user.getFullName(),
+                        finalBooking.getCustomEventTitle() != null ? finalBooking.getCustomEventTitle() : finalBooking.getShow().getEvent().getTitle(),
+                        finalBooking.getSeat().getSeatNumber(),
+                        finalBooking.getCustomStartTime() != null ? finalBooking.getCustomStartTime() : (finalBooking.getShow().getStartTime() != null ? finalBooking.getShow().getStartTime().toString() : java.time.Instant.now().toString()),
+                        base64QrImage
+                );
 
-            // Publish the ticket confirmation event async to Kafka
-            notificationPublisherProducer.publishConfrimationEvent(notificationEvent);
+                // Publish the ticket confirmation event async to Kafka
+                notificationPublisherProducer.publishConfrimationEvent(notificationEvent);
+            }
         } else {
             // Sad Path: Gateway reports payment failure. Delegate to clear up operations
             log.warn("Payment failed for reference {}. Releasing locked slots back to game loops.", request.bookingReference());
@@ -124,4 +131,49 @@ public class PaymentSettlementService {
             redisTemplate.opsForSet().add(availableSetKey, String.valueOf(finalBooking.getSeat().getId()));
         }
     }
+
+    @Transactional(readOnly = true)
+    public void publishUnifiedNotification(String[] references) {
+        log.info("Compiling unified email notification for references size: {}", references.length);
+        java.util.List<String> seatsList = new java.util.ArrayList<>();
+        java.util.List<String> qrCodesList = new java.util.ArrayList<>();
+        
+        Booking firstBooking = null;
+        
+        for (String ref : references) {
+            Booking booking = bookingRepository.findByBookingReference(ref).orElse(null);
+            if (booking != null) {
+                if (firstBooking == null) {
+                    firstBooking = booking;
+                }
+                seatsList.add(booking.getSeat().getSeatNumber());
+                if (booking.getQrCodePayload() != null) {
+                    qrCodesList.add(booking.getQrCodePayload());
+                }
+            }
+        }
+        
+        if (firstBooking != null) {
+            final Booking finalFirstBooking = firstBooking;
+            User user = userRepository.findById(finalFirstBooking.getUserId())
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for ID: " + finalFirstBooking.getUserId()));
+                    
+            String joinedSeats = String.join(", ", seatsList);
+            String joinedQrs = String.join("|", qrCodesList);
+            
+            TicketNotificationEvent notificationEvent = new TicketNotificationEvent(
+                    String.join(",", references),
+                    user.getEmail(),
+                    user.getFullName(),
+                    firstBooking.getCustomEventTitle() != null ? firstBooking.getCustomEventTitle() : firstBooking.getShow().getEvent().getTitle(),
+                    joinedSeats,
+                    firstBooking.getCustomStartTime() != null ? firstBooking.getCustomStartTime() : (firstBooking.getShow().getStartTime() != null ? firstBooking.getShow().getStartTime().toString() : java.time.Instant.now().toString()),
+                    joinedQrs
+            );
+            
+            notificationPublisherProducer.publishConfrimationEvent(notificationEvent);
+            log.info("Unified Ticket Confirmation Event Dispatched: Refs: {}", String.join(",", references));
+        }
+    }
+
 }

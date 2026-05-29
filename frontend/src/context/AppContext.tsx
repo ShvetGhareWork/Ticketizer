@@ -89,7 +89,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { seatsPerEventRef.current = seatsPerEvent; }, [seatsPerEvent]);
   useEffect(() => { activeAllocationRef.current = activeAllocation; }, [activeAllocation]);
 
-  // Load token from localStorage on mount (for persistent dev ease)
+  // Load token and activeAllocation from storage on mount (for persistent dev ease)
   useEffect(() => {
     const savedToken = localStorage.getItem('authToken');
     if (savedToken) {
@@ -98,8 +98,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setConnectionStatus('ONLINE');
       addLog('SYSTEM', 'RESTORED SESSION: Session token loaded from localStorage.');
     }
+    const savedAlloc = sessionStorage.getItem('activeAllocation');
+    if (savedAlloc) {
+      try {
+        const parsed = JSON.parse(savedAlloc);
+        setActiveAllocation(parsed);
+        activeAllocationRef.current = parsed;
+        addLog('SYSTEM', 'RESTORED LEASE: Active allocation loaded from sessionStorage.');
+      } catch (e) {
+        console.error("Failed to parse activeAllocation from sessionStorage", e);
+      }
+    }
     setIsInitialized(true);
   }, []);
+
+  // Save activeAllocation to sessionStorage when it changes
+  useEffect(() => {
+    if (activeAllocation) {
+      sessionStorage.setItem('activeAllocation', JSON.stringify(activeAllocation));
+    } else {
+      sessionStorage.removeItem('activeAllocation');
+    }
+  }, [activeAllocation]);
+
 
   const addLog = useCallback((type: ConsoleLogEntry['type'], message: string) => {
     const now = new Date();
@@ -621,12 +642,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let eventTitle = '';
       let venue = '';
       let startTime = '';
+      let eventImage = '';
       try {
         const stored = sessionStorage.getItem('currentEvent');
         if (stored) {
           const parsed = JSON.parse(stored);
           eventTitle = parsed.title || '';
           venue = parsed.venue ? `${parsed.venue}, ${parsed.city || ''}` : '';
+          eventImage = parsed.image || '';
           
           const eventDate = parsed.date || '';
           const eventTime = parsed.time || '';
@@ -636,7 +659,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to parse currentEvent:", e);
       }
 
-      const response = await fetch(`http://localhost:8080/api/v1/reservations/show/${showId}/seat/${seat.id}?eventTitle=${encodeURIComponent(eventTitle)}&venue=${encodeURIComponent(venue)}&startTime=${encodeURIComponent(startTime)}`, {
+      const eventTitleWithImage = eventTitle + ":::imageURL:::" + eventImage;
+      const response = await fetch(`http://localhost:8080/api/v1/reservations/show/${showId}/seat/${seat.id}?eventTitle=${encodeURIComponent(eventTitleWithImage)}&venue=${encodeURIComponent(venue)}&startTime=${encodeURIComponent(startTime)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
