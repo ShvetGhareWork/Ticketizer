@@ -73,46 +73,71 @@ export default function EventsListing() {
     const fetchTicketmasterEvents = async () => {
       setLoading(true);
       try {
-        const res = await fetch(
+        const urls = [
+          "https://app.ticketmaster.com/discovery/v2/events.json?attractionId=K8vZ917Gku7&countryCode=CA&apikey=4GuIsc99bX5H6BRpf4FPyAcqsoIrBO1E",
+          "https://app.ticketmaster.com/discovery/v2/events.json?keyword=devjam&source=universe&countryCode=US&apikey=4GuIsc99bX5H6BRpf4FPyAcqsoIrBO1E",
+          "https://app.ticketmaster.com/discovery/v2/events.json?classificationName=music&dmaId=324&apikey=4GuIsc99bX5H6BRpf4FPyAcqsoIrBO1E",
           "https://app.ticketmaster.com/discovery/v2/events.json?countryCode=US&apikey=4GuIsc99bX5H6BRpf4FPyAcqsoIrBO1E",
+        ];
+
+        const results = await Promise.all(
+          urls.map((url) =>
+            fetch(url)
+              .then((res) => (res.ok ? res.json() : null))
+              .catch(() => null),
+          ),
         );
-        if (res.ok) {
-          const data = await res.json();
-          const rawEvents: TicketmasterEvent[] = data._embedded?.events || [];
-          const mapped: MappedEvent[] = rawEvents.map((e) => {
-            const image =
-              e.images?.reduce((prev, curr) =>
-                prev.width > curr.width ? prev : curr,
-              )?.url ||
-              e.images?.[0]?.url ||
-              "";
-            const venue = e._embedded?.venues?.[0]?.name || "US Arena";
-            const city = e._embedded?.venues?.[0]?.city?.name || "USA";
-            return {
-              id: e.id,
-              title: e.name,
-              date: e.dates?.start?.localDate || "2024-08-24",
-              venue: `${venue}, ${city}`,
-              image: image,
-              url: e.url,
-              tags: [
-                {
-                  label:
-                    e.classifications?.[0]?.segment?.name?.toUpperCase() ||
-                    "CONCERT",
-                  style: "bg-white text-gray-900",
-                },
-                { label: "TICKETMASTER", style: "bg-blue-600 text-white" },
-              ],
-              status: {
-                label: "SELLING FAST",
-                style: "bg-blue-100 text-blue-700",
+
+        let combinedRaw: TicketmasterEvent[] = [];
+        results.forEach((data) => {
+          if (data && data._embedded?.events) {
+            combinedRaw = [...combinedRaw, ...data._embedded.events];
+          }
+        });
+
+        // Deduplicate events by ID
+        const uniqueEventsMap = new Map<string, TicketmasterEvent>();
+        combinedRaw.forEach((e) => {
+          if (e && e.id && !uniqueEventsMap.has(e.id)) {
+            uniqueEventsMap.set(e.id, e);
+          }
+        });
+
+        const uniqueRaw = Array.from(uniqueEventsMap.values());
+
+        const mapped: MappedEvent[] = uniqueRaw.map((e) => {
+          const image =
+            e.images?.reduce((prev, curr) =>
+              prev.width > curr.width ? prev : curr,
+            )?.url ||
+            e.images?.[0]?.url ||
+            "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=800";
+          const venue = e._embedded?.venues?.[0]?.name || "US Arena";
+          const city = e._embedded?.venues?.[0]?.city?.name || "USA";
+          return {
+            id: e.id,
+            title: e.name,
+            date: e.dates?.start?.localDate || "2026-08-20",
+            venue: `${venue}, ${city}`,
+            image: image,
+            url: e.url,
+            tags: [
+              {
+                label:
+                  e.classifications?.[0]?.segment?.name?.toUpperCase() ||
+                  "CONCERT",
+                style: "bg-white text-gray-900",
               },
-              price: "£" + (Math.floor(Math.random() * 80) + 40) + ".00",
-            };
-          });
-          setEvents(mapped);
-        }
+              { label: "TICKETMASTER", style: "bg-blue-600 text-white" },
+            ],
+            status: {
+              label: "SELLING FAST",
+              style: "bg-blue-100 text-blue-700",
+            },
+            price: "£" + (Math.floor(Math.random() * 80) + 40) + ".00",
+          };
+        });
+        setEvents(mapped);
       } catch (err) {
         console.error("Failed to load events from Ticketmaster:", err);
       } finally {
@@ -320,7 +345,7 @@ export default function EventsListing() {
             )}
 
             {/* Pagination Controls */}
-            <div className="mt-12 flex items-center justify-center gap-2">
+            {/* <div className="mt-12 flex items-center justify-center gap-2">
               <button className="w-10 h-10 flex items-center justify-center border border-gray-200 rounded text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors">
                 <ChevronLeft size={18} />
               </button>
@@ -346,7 +371,7 @@ export default function EventsListing() {
               <button className="w-10 h-10 flex items-center justify-center border border-gray-200 rounded text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors">
                 <ChevronRight size={18} />
               </button>
-            </div>
+            </div> */}
           </div>
         </div>
       </main>

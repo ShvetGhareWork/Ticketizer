@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, ArrowRight, Share2, Bell, LogOut, User } from "lucide-react";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { motion } from "framer-motion";
@@ -19,69 +19,107 @@ export default function TicketizerLanding() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
 
-  // --- Data for the Events Grid ---
-  const events = [
-    {
-      id: 1,
-      tag: "LIVE SALE",
-      tagColor: "bg-white text-gray-900",
-      image:
-        "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=800",
-      date: "26 MAY 2026 — MUMBAI",
-      title: "IPL FINAL 2026",
-      price: "From ₹5,000",
-    },
-    {
-      id: 2,
-      tag: "FAST FILLING",
-      tagColor: "bg-blue-600 text-white",
-      image:
-        "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=800",
-      date: "18 JUN 2026 — DELHI",
-      title: "COLDPLAY: MUSIC OF SPHERES",
-      price: "From ₹4,500",
-    },
-    {
-      id: 3,
-      tag: "",
-      tagColor: "",
-      image:
-        "https://images.unsplash.com/photo-1470229722913-7c090be5c524?auto=format&fit=crop&q=80&w=800",
-      date: "02 JUL 2026 — BENGALURU",
-      title: "DILJIT DOSANJH TOUR",
-      price: "From ₹2,500",
-    },
-    {
-      id: 4,
-      tag: "",
-      tagColor: "",
-      image:
-        "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&q=80&w=800",
-      date: "12 AUG 2026 — MUMBAI",
-      title: "ZAKIR KHAN LIVE",
-      price: "From ₹999",
-    },
-    {
-      id: 5,
-      tag: "",
-      tagColor: "",
-      image:
-        "https://images.unsplash.com/photo-1533174000255-124b17f54c9e?auto=format&fit=crop&q=80&w=800",
-      date: "25 AUG 2026 — HYDERABAD",
-      title: "LOLLAPALOOZA INDIA",
-      price: "From ₹8,000",
-    },
-    {
-      id: 6,
-      tag: "",
-      tagColor: "",
-      image:
-        "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&q=80&w=800",
-      date: "30 SEP 2026 — GOA",
-      title: "SUNBURN FESTIVAL",
-      price: "From ₹3,500",
-    },
-  ];
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [ticketDeck, setTicketDeck] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchHomeEvents = async () => {
+      setLoading(true);
+      try {
+        const urls = [
+          "https://app.ticketmaster.com/discovery/v2/events.json?attractionId=K8vZ917Gku7&countryCode=CA&apikey=4GuIsc99bX5H6BRpf4FPyAcqsoIrBO1E",
+          "https://app.ticketmaster.com/discovery/v2/events.json?keyword=devjam&source=universe&countryCode=US&apikey=4GuIsc99bX5H6BRpf4FPyAcqsoIrBO1E",
+          "https://app.ticketmaster.com/discovery/v2/events.json?classificationName=music&dmaId=324&apikey=4GuIsc99bX5H6BRpf4FPyAcqsoIrBO1E",
+          "https://app.ticketmaster.com/discovery/v2/events.json?countryCode=US&apikey=4GuIsc99bX5H6BRpf4FPyAcqsoIrBO1E"
+        ];
+
+        const results = await Promise.all(
+          urls.map(url => fetch(url).then(res => res.ok ? res.json() : null).catch(() => null))
+        );
+
+        let combinedRaw: any[] = [];
+        results.forEach(data => {
+          if (data && data._embedded?.events) {
+            combinedRaw = [...combinedRaw, ...data._embedded.events];
+          }
+        });
+
+        // Deduplicate events by ID
+        const uniqueEventsMap = new Map();
+        combinedRaw.forEach(e => {
+          if (e && e.id && !uniqueEventsMap.has(e.id)) {
+            uniqueEventsMap.set(e.id, e);
+          }
+        });
+
+        const uniqueRaw = Array.from(uniqueEventsMap.values()).slice(0, 9); // Take top 9 events
+
+        const mapped = uniqueRaw.map((e, index) => {
+          const image =
+            e.images?.reduce((prev: any, curr: any) =>
+              prev.width > curr.width ? prev : curr,
+            )?.url ||
+            e.images?.[0]?.url ||
+            "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=800";
+          const venue = e._embedded?.venues?.[0]?.name || "Arena";
+          const city = e._embedded?.venues?.[0]?.city?.name || "City";
+          
+          let tag = "LIVE SALE";
+          let tagColor = "bg-white text-gray-900";
+          if (index % 3 === 1) {
+            tag = "FAST FILLING";
+            tagColor = "bg-blue-600 text-white";
+          } else if (index % 3 === 2) {
+            tag = "EXCLUSIVE";
+            tagColor = "bg-amber-500 text-gray-900";
+          }
+
+          const localDate = e.dates?.start?.localDate || "2026-08-20";
+          const formattedDate = new Date(localDate).toLocaleDateString("en-US", {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+          }).toUpperCase() + ` — ${city.toUpperCase()}`;
+
+          const price = e.priceRanges?.[0]?.min 
+            ? `From £${e.priceRanges[0].min}`
+            : `From £${Math.floor(Math.random() * 50) + 30}`;
+
+          return {
+            id: e.id,
+            tag,
+            tagColor,
+            image,
+            date: formattedDate,
+            title: e.name,
+            price,
+            venue: `${venue}, ${city}`
+          };
+        });
+
+        if (mapped.length > 0) {
+          setEvents(mapped);
+          
+          // Populate the interactive ticket deck with the top 3 live events
+          const deckItems = mapped.slice(0, 3).map((e, idx) => ({
+            id: e.id,
+            title: e.title,
+            venue: e.venue,
+            price: e.price,
+            tag: idx === 0 ? "LIVE" : idx === 1 ? "FAST" : "NEW",
+            code: `#TKZ-${Math.floor(Math.random() * 90) + 10}`,
+          }));
+          setTicketDeck(deckItems);
+        }
+      } catch (err) {
+        console.error("Failed to fetch home events:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHomeEvents();
+  }, []);
 
   const categories = [
     "All Events",
@@ -93,37 +131,10 @@ export default function TicketizerLanding() {
     "Festivals",
   ];
 
-  // --- State for the Interactive Ticket Deck ---
-  const [ticketDeck, setTicketDeck] = useState([
-    {
-      id: "t1",
-      title: "IPL FINAL 2026",
-      venue: "Wankhede Stadium",
-      price: "₹5,000",
-      tag: "LIVE",
-      code: "#TKZ-94",
-    },
-    {
-      id: "t2",
-      title: "COLDPLAY INDIA",
-      venue: "DY Patil Stadium",
-      price: "₹4,500",
-      tag: "FAST",
-      code: "#TKZ-22",
-    },
-    {
-      id: "t3",
-      title: "DILJIT DOSANJH",
-      venue: "Mahalaxmi Racecourse",
-      price: "₹2,500",
-      tag: "NEW",
-      code: "#TKZ-07",
-    },
-  ]);
-
   // Function to cycle the top card to the back of the deck
   const cycleCardToBack = () => {
     setTicketDeck((prev) => {
+      if (prev.length === 0) return prev;
       const newDeck = [...prev];
       const topCard = newDeck.shift(); // Remove the first item
       if (topCard) newDeck.push(topCard); // Add it to the end
@@ -141,9 +152,7 @@ export default function TicketizerLanding() {
   };
 
   const getTicketTargetUrl = (ticketId: string) => {
-    if (ticketId === "t1") return "/events/1";
-    if (ticketId === "t2") return "/events/2";
-    return "/events/3";
+    return `/events/${ticketId}`;
   };
 
   return (
@@ -338,48 +347,66 @@ export default function TicketizerLanding() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {events.map((event) => (
-              <div
-                key={event.id}
-                onClick={() => router.push(`/events/${event.id}`)}
-                className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-blue-600 transition-colors group cursor-pointer shadow-sm hover:shadow-md"
-              >
-                <div className="h-40 sm:h-48 relative overflow-hidden bg-gray-200">
-                  <img
-                    src={event.image}
-                    alt={event.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  {event.tag && (
-                    <div
-                      className={`absolute top-4 left-4 text-[9px] sm:text-[10px] font-bold px-2.5 py-1 rounded-sm ${event.tagColor}`}
-                    >
-                      {event.tag}
-                    </div>
-                  )}
-                </div>
-                <div className="p-5 sm:p-6">
-                  <p className="text-blue-600 text-[10px] sm:text-xs font-bold tracking-wide uppercase mb-2">
-                    {event.date}
-                  </p>
-                  <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-6 sm:mb-8 line-clamp-1">
-                    {event.title}
-                  </h3>
-                  <div className="flex justify-between items-center">
-                    <span className="text-blue-600 font-mono font-bold text-sm sm:text-base">
-                      {event.price}
-                    </span>
-                    <span className="text-gray-900 text-[10px] sm:text-xs font-bold tracking-wide flex items-center gap-1 group-hover:text-blue-600 transition-colors">
-                      BOOK NOW{" "}
-                      <ArrowRight
-                        size={14}
-                        className="group-hover:translate-x-1 transition-transform"
-                      />
-                    </span>
+            {loading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm animate-pulse h-80 flex flex-col p-6">
+                  <div className="bg-gray-200 h-40 w-full rounded-lg mb-4"></div>
+                  <div className="bg-gray-200 h-3 w-1/3 rounded mb-2"></div>
+                  <div className="bg-gray-200 h-5 w-3/4 rounded mb-6"></div>
+                  <div className="flex justify-between items-center mt-auto">
+                    <div className="bg-gray-200 h-4 w-1/4 rounded"></div>
+                    <div className="bg-gray-200 h-4 w-1/4 rounded"></div>
                   </div>
                 </div>
+              ))
+            ) : events.length === 0 ? (
+              <div className="col-span-full py-12 text-center text-gray-500 font-bold uppercase tracking-wider text-sm">
+                NO LIVE TICKETMASTER EVENTS FOUND
               </div>
-            ))}
+            ) : (
+              events.map((event) => (
+                <div
+                  key={event.id}
+                  onClick={() => router.push(`/events/${event.id}`)}
+                  className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-blue-600 transition-colors group cursor-pointer shadow-sm hover:shadow-md"
+                >
+                  <div className="h-40 sm:h-48 relative overflow-hidden bg-gray-200">
+                    <img
+                      src={event.image}
+                      alt={event.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    {event.tag && (
+                      <div
+                        className={`absolute top-4 left-4 text-[9px] sm:text-[10px] font-bold px-2.5 py-1 rounded-sm ${event.tagColor}`}
+                      >
+                        {event.tag}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-5 sm:p-6">
+                    <p className="text-blue-600 text-[10px] sm:text-xs font-bold tracking-wide uppercase mb-2">
+                      {event.date}
+                    </p>
+                    <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-6 sm:mb-8 line-clamp-1">
+                      {event.title}
+                    </h3>
+                    <div className="flex justify-between items-center">
+                      <span className="text-blue-600 font-mono font-bold text-sm sm:text-base">
+                        {event.price}
+                      </span>
+                      <span className="text-gray-900 text-[10px] sm:text-xs font-bold tracking-wide flex items-center gap-1 group-hover:text-blue-600 transition-colors">
+                        BOOK NOW{" "}
+                        <ArrowRight
+                          size={14}
+                          className="group-hover:translate-x-1 transition-transform"
+                        />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </section>
 

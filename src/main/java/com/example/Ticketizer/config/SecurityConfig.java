@@ -34,6 +34,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/v1/auth/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/reservations/show/*/seats").permitAll()
                 .requestMatchers("/api/v1/payments/settle/**", "/api/v1/payments/webhook").permitAll()
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()

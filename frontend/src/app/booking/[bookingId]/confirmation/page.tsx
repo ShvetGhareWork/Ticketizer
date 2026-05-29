@@ -20,6 +20,11 @@ interface BookingDetails {
   bookingReference: string;
   status: string;
   qrCodePayload: string;
+  seatNumber?: string;
+  price?: number;
+  eventTitle?: string;
+  venue?: string;
+  startTime?: string;
 }
 
 export default function BookingConfirmationPage() {
@@ -28,7 +33,7 @@ export default function BookingConfirmationPage() {
 
   const { authToken, activeAllocation, clearActiveAllocation, addLog } = useApp();
 
-  const [bookingData, setBookingData] = useState<BookingDetails | null>(null);
+  const [bookingsData, setBookingsData] = useState<BookingDetails[]>([]);
   const [loading, setLoading] = useState(true);
   // Capture seat labels at time of render before clearActiveAllocation() wipes them
   const [capturedSeats, setCapturedSeats] = useState<string>(
@@ -38,6 +43,40 @@ export default function BookingConfirmationPage() {
   const [eventContext, setEventContext] = useState<{
     title: string; date: string; venue: string; city: string; time?: string;
   } | null>(null);
+  const [userEmail, setUserEmail] = useState<string>("shvet@example.com");
+
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      let email = localStorage.getItem("userEmail");
+      
+      const token = authToken || localStorage.getItem("authToken");
+      if (token) {
+        try {
+          if (token.startsWith("simulated-token-") || token.startsWith("google-token-")) {
+            const base64Part = token.split("-").pop() || "";
+            const decodedEmail = window.atob(base64Part);
+            if (decodedEmail && decodedEmail.includes("@")) {
+              email = decodedEmail;
+            }
+          } else {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const payload = JSON.parse(window.atob(base64));
+            if (payload && payload.email) {
+              email = payload.email;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to decode token for email", e);
+        }
+      }
+      
+      if (email) {
+        setUserEmail(email);
+      }
+    }
+  }, [authToken]);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -51,81 +90,77 @@ export default function BookingConfirmationPage() {
       const stored = sessionStorage.getItem("currentEvent");
       if (stored) {
         setEventContext(JSON.parse(stored));
-        sessionStorage.removeItem("currentEvent");
       }
     } catch (e) { /* ignore */ }
 
     const fetchBookingDetails = async () => {
       setLoading(true);
+      const refs = bookingId.split(",").map(r => decodeURIComponent(r).trim()).filter(Boolean);
+      
       try {
-        const response = await fetch(`http://localhost:8080/api/v1/bookings/${bookingId}`, {
-          headers: {
-            "Authorization": `Bearer ${authToken}`,
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setBookingData(data);
-          addLog("SUCCESS", `GATEWAY LOADED: Booking details synced successfully.`);
-          
-          const seatLabelsStr = capturedSeats || activeAllocation?.seatLabels?.join(", ") || "A12, A13";
-          const seatCount = seatLabelsStr.split(", ").filter(Boolean).length;
-          const eventTitle = eventContext?.title || "Live Event Booking";
-          const eventDate = eventContext?.date ? `${eventContext.date} • ${eventContext?.time || ""}`.trim() : "Upcoming";
-          const eventVenue = eventContext ? `${eventContext.venue}, ${eventContext.city}` : "Venue TBA";
-
-          const savedBookings = JSON.parse(localStorage.getItem("tkz_bookings") || "[]");
-          const exists = savedBookings.some((b: any) => b.id === bookingId);
-          if (!exists) {
-            savedBookings.unshift({
-              id: bookingId,
-              title: eventTitle,
-              date: eventDate,
-              venue: eventVenue,
-              seats: `${seatLabelsStr} · Standard`,
-              price: `$${(seatCount * 150.0 * 1.05).toFixed(2)}`,
-              status: "CONFIRMED",
-              image: "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400",
+        const promises = refs.map(async (ref, idx) => {
+          try {
+            const response = await fetch(`http://localhost:8080/api/v1/bookings/${ref}`, {
+              headers: {
+                "Authorization": `Bearer ${authToken || localStorage.getItem("authToken") || ""}`,
+              },
             });
-            localStorage.setItem("tkz_bookings", JSON.stringify(savedBookings));
+
+            if (response.ok) {
+              const data = await response.json();
+              if (data && data.eventTitle) {
+                return data;
+              }
+            }
+          } catch (err) {
+            console.error("Failed to load booking details for", ref, err);
           }
-          
-          clearActiveAllocation();
-        } else {
-          throw new Error("Relational gateway refused to load booking reference.");
-        }
-      } catch (err) {
-        const mockSeats = capturedSeats || activeAllocation?.seatLabels?.join(", ") || "A12, A13";
-        const seatCount = mockSeats.split(", ").filter(Boolean).length;
-        setBookingData({
-          bookingReference: bookingId,
-          status: "CONFIRMED",
-          // Short payload triggers the SVG fallback on the QR display
-          qrCodePayload: `TKZ::${bookingId.substring(0,8)}`,
+
+          const seatLabelsList = capturedSeats ? capturedSeats.split(", ").filter(Boolean) : (activeAllocation?.seatLabels || ["A12"]);
+          const seatLabel = seatLabelsList[idx] || seatLabelsList[0] || "A12";
+          return {
+            bookingReference: ref,
+            status: "CONFIRMED",
+            qrCodePayload: `TKZ::${ref.substring(0, 8)}`,
+            seatNumber: seatLabel,
+            price: 150.0,
+            eventTitle: eventContext?.title || "Live Event Booking",
+            venue: eventContext ? `${eventContext.venue}, ${eventContext.city}` : "Venue TBA",
+            startTime: eventContext?.date || "Upcoming",
+          };
         });
-        
+
+        const results = await Promise.all(promises);
+        setBookingsData(results);
+        addLog("SUCCESS", `GATEWAY LOADED: Synced details for ${results.length} seat allocation(s).`);
+
+        const seatLabelsList = capturedSeats ? capturedSeats.split(", ").filter(Boolean) : (activeAllocation?.seatLabels || ["A12"]);
         const eventTitle = eventContext?.title || "Live Event Booking";
         const eventDate = eventContext?.date ? `${eventContext.date} • ${eventContext?.time || ""}`.trim() : "Upcoming";
         const eventVenue = eventContext ? `${eventContext.venue}, ${eventContext.city}` : "Venue TBA";
 
         const savedBookings = JSON.parse(localStorage.getItem("tkz_bookings") || "[]");
-        const exists = savedBookings.some((b: any) => b.id === bookingId);
-        if (!exists) {
-          savedBookings.unshift({
-            id: bookingId,
-            title: eventTitle,
-            date: eventDate,
-            venue: eventVenue,
-            seats: `${mockSeats} · Standard`,
-            price: `$${(seatCount * 150.0 * 1.05).toFixed(2)}`,
-            status: "CONFIRMED",
-            image: "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400",
-          });
-          localStorage.setItem("tkz_bookings", JSON.stringify(savedBookings));
-        }
-        
+
+        results.forEach((data, index) => {
+          const seatLabel = seatLabelsList[index] || "A12";
+          const exists = savedBookings.some((b: any) => b.id === data.bookingReference);
+          if (!exists) {
+            savedBookings.unshift({
+              id: data.bookingReference,
+              title: data.eventTitle || eventTitle,
+              date: data.startTime || eventDate,
+              venue: data.venue || eventVenue,
+              seats: `${seatLabel} · Standard`,
+              price: `$${((data.price || 150.0) * 1.05).toFixed(2)}`,
+              status: "CONFIRMED",
+              image: eventContext?.image || "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400",
+            });
+          }
+        });
+        localStorage.setItem("tkz_bookings", JSON.stringify(savedBookings));
         clearActiveAllocation();
+      } catch (err) {
+        console.error("Relational gateway failed.", err);
       } finally {
         setLoading(false);
       }
@@ -188,139 +223,146 @@ export default function BookingConfirmationPage() {
 
           <p className="text-gray-600 font-medium">
             Your tickets have been sent to{" "}
-            <span className="text-gray-900 font-bold">shvet@example.com</span>
+            <span className="text-gray-900 font-bold">{userEmail}</span>
           </p>
         </div>
 
-        {/* The Ticket Card */}
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.4 }}
-          className="max-w-[460px] mx-auto w-full bg-white rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-l-4 border-blue-600 relative overflow-hidden mb-10"
-        >
-          {/* Top Section */}
-          <div className="p-6 sm:p-8">
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                  Event
-                </p>
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight leading-none uppercase">
-                  {eventContext?.title || "LIVE EVENT"}
-                </h2>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                  Type
-                </p>
-                <span className="bg-blue-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
-                  Standard
-                </span>
-              </div>
-            </div>
+        {/* Render a ticket card for each booked ticket! */}
+        <div className="flex flex-col gap-8 max-w-[460px] mx-auto w-full mb-10">
+          {bookingsData.map((data, index) => {
+            const seatLabelsList = capturedSeats ? capturedSeats.split(", ").filter(Boolean) : ["A12"];
+            const seatLabel = data.seatNumber || seatLabelsList[index] || "A12";
+            
+            return (
+              <motion.div
+                key={data.bookingReference}
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: index * 0.1, duration: 0.4 }}
+                className="w-full bg-white rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-l-4 border-blue-600 relative overflow-hidden"
+              >
+                {/* Top Section */}
+                <div className="p-6 sm:p-8">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
+                        Event
+                      </p>
+                      <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight leading-none uppercase">
+                        {data.eventTitle || eventContext?.title || "LIVE EVENT"}
+                      </h2>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
+                        Type
+                      </p>
+                      <span className="bg-blue-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
+                        Standard
+                      </span>
+                    </div>
+                  </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                  Status
-                </p>
-                <p className="text-sm font-bold text-green-600 uppercase">
-                  {bookingData?.status || "CONFIRMED"}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                  Venue
-                </p>
-                <p className="text-sm font-bold text-gray-900">
-                  {eventContext?.venue || "Live Venue"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Perforated Divider */}
-          <div className="relative h-0 border-t border-dashed border-gray-300 w-full z-10">
-            {/* Left and Right cutouts to match background color */}
-            <div className="absolute -left-3 -top-3 w-6 h-6 bg-[#F8FAFC] rounded-full shadow-inner"></div>
-            <div className="absolute -right-3 -top-3 w-6 h-6 bg-[#F8FAFC] rounded-full shadow-inner"></div>
-          </div>
-
-          {/* Bottom Section (QR + Seat Details) */}
-          <div className="bg-[#F0F4F8] p-6 sm:p-8 flex flex-col items-center relative">
-            {/* QR Code Graphic Placeholder */}
-            <div className="bg-white p-3 rounded-xl shadow-sm mb-4">
-            {bookingData?.qrCodePayload ? (
-                <div className="flex flex-col items-center p-2 border-2 border-gray-200 rounded">
-                  {bookingData.qrCodePayload.startsWith("data:image") || bookingData.qrCodePayload.length > 200 ? (
-                    // Real Base64 QR code image from backend
-                    <img
-                      src={`data:image/png;base64,${bookingData.qrCodePayload.replace(/^data:image\/png;base64,/, "")}`}
-                      alt="Ticket QR Code"
-                      className="w-28 h-28 sm:w-32 sm:h-32"
-                    />
-                  ) : (
-                    // Styled SVG fallback for simulation mode
-                    <svg
-                      viewBox="0 0 100 100"
-                      className="w-28 h-28 sm:w-32 sm:h-32 text-gray-800"
-                      fill="currentColor"
-                    >
-                      <rect x="0" y="0" width="25" height="25" />
-                      <rect x="75" y="0" width="25" height="25" />
-                      <rect x="0" y="75" width="25" height="25" />
-                      <rect x="5" y="5" width="15" height="15" fill="white" />
-                      <rect x="80" y="5" width="15" height="15" fill="white" />
-                      <rect x="5" y="80" width="15" height="15" fill="white" />
-                      <rect x="10" y="10" width="5" height="5" />
-                      <rect x="85" y="10" width="5" height="5" />
-                      <rect x="10" y="85" width="5" height="5" />
-                      <rect x="35" y="0" width="10" height="20" />
-                      <rect x="50" y="10" width="20" height="10" />
-                      <rect x="35" y="30" width="15" height="15" />
-                      <rect x="60" y="35" width="25" height="15" />
-                      <rect x="80" y="55" width="20" height="20" />
-                      <rect x="50" y="60" width="20" height="20" />
-                      <rect x="35" y="80" width="10" height="10" />
-                      <rect x="60" y="90" width="25" height="10" />
-                      <rect x="15" y="40" width="10" height="25" />
-                      <rect x="30" y="55" width="15" height="10" />
-                    </svg>
-                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
+                        Status
+                      </p>
+                      <p className="text-sm font-bold text-green-600 uppercase">
+                        {data.status || "CONFIRMED"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
+                        Venue
+                      </p>
+                      <p className="text-sm font-bold text-gray-900">
+                        {data.venue || eventContext?.venue || "Live Venue"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <div className="w-28 h-28 sm:w-32 sm:h-32 bg-gray-200 animate-pulse rounded" />
-              )}
-            </div>
 
-            <p className="text-[9px] font-bold tracking-widest text-gray-500 uppercase mb-6">
-              Scan at venue entrance
-            </p>
+                {/* Perforated Divider */}
+                <div className="relative h-0 border-t border-dashed border-gray-300 w-full z-10">
+                  <div className="absolute -left-3 -top-3 w-6 h-6 bg-[#F8FAFC] rounded-full shadow-inner"></div>
+                  <div className="absolute -right-3 -top-3 w-6 h-6 bg-[#F8FAFC] rounded-full shadow-inner"></div>
+                </div>
 
-            {/* Seat Breakdown */}
-            <div className="w-full border-t border-gray-200 pt-6 grid grid-cols-3 text-center">
-              <div>
-                <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                  Section
-                </p>
-                <p className="text-lg font-extrabold text-blue-700">PREM</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                  Row
-                </p>
-                <p className="text-lg font-extrabold text-blue-700">Multi</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
-                  Seats
-                </p>
-                <p className="text-lg font-extrabold text-blue-700">{selectedSeats}</p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+                {/* Bottom Section (QR + Seat Details) */}
+                <div className="bg-[#F0F4F8] p-6 sm:p-8 flex flex-col items-center relative">
+                  {/* QR Code Graphic Placeholder */}
+                  <div className="bg-white p-3 rounded-xl shadow-sm mb-4">
+                    {data.qrCodePayload ? (
+                      <div className="flex flex-col items-center p-2 border-2 border-gray-200 rounded">
+                        {data.qrCodePayload.startsWith("data:image") || data.qrCodePayload.length > 200 ? (
+                          <img
+                            src={`data:image/png;base64,${data.qrCodePayload.replace(/^data:image\/png;base64,/, "")}`}
+                            alt="Ticket QR Code"
+                            className="w-28 h-28 sm:w-32 sm:h-32"
+                          />
+                        ) : (
+                          <svg
+                            viewBox="0 0 100 100"
+                            className="w-28 h-28 sm:w-32 sm:h-32 text-gray-800"
+                            fill="currentColor"
+                          >
+                            <rect x="0" y="0" width="25" height="25" />
+                            <rect x="75" y="0" width="25" height="25" />
+                            <rect x="0" y="75" width="25" height="25" />
+                            <rect x="5" y="5" width="15" height="15" fill="white" />
+                            <rect x="80" y="5" width="15" height="15" fill="white" />
+                            <rect x="5" y="80" width="15" height="15" fill="white" />
+                            <rect x="10" y="10" width="5" height="5" />
+                            <rect x="85" y="10" width="5" height="5" />
+                            <rect x="10" y="85" width="5" height="5" />
+                            <rect x="35" y="0" width="10" height="20" />
+                            <rect x="50" y="10" width="20" height="10" />
+                            <rect x="35" y="30" width="15" height="15" />
+                            <rect x="60" y="35" width="25" height="15" />
+                            <rect x="80" y="55" width="20" height="20" />
+                            <rect x="50" y="60" width="20" height="20" />
+                            <rect x="35" y="80" width="10" height="10" />
+                            <rect x="60" y="90" width="25" height="10" />
+                            <rect x="15" y="40" width="10" height="25" />
+                            <rect x="30" y="55" width="15" height="10" />
+                          </svg>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="w-28 h-28 sm:w-32 sm:h-32 bg-gray-200 animate-pulse rounded" />
+                    )}
+                  </div>
+
+                  <p className="text-[9px] font-bold tracking-widest text-gray-500 uppercase mb-6">
+                    Scan at venue entrance
+                  </p>
+
+                  {/* Seat Breakdown */}
+                  <div className="w-full border-t border-gray-200 pt-6 grid grid-cols-3 text-center">
+                    <div>
+                      <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
+                        Section
+                      </p>
+                      <p className="text-lg font-extrabold text-blue-700">PREM</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
+                        Row
+                      </p>
+                      <p className="text-lg font-extrabold text-blue-700">{(seatLabel && typeof seatLabel === 'string') ? seatLabel.charAt(0) : "A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-1">
+                        Seat
+                      </p>
+                      <p className="text-lg font-extrabold text-blue-700">{seatLabel}</p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
 
         {/* Action Buttons */}
         <motion.div

@@ -2,6 +2,15 @@ spring:
   application:
     name: ticketflow
 
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: shvetgharework@gmail.com
+    password: elfekjuxxiaxidkr
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
   # ── Database ────────────────────────────────────────────────────────────────
   datasource:
     url: jdbc:postgresql://localhost:5499/ticketflow?stringtype=unspecified
@@ -62,6 +71,8 @@ spring:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*" # For JSON deserialization. In production, specify your package for security.
       # CRITICAL: disable auto-commit. We commit manually only AFTER the DB write
       # succeeds (Phase 4). Auto-commit = "I received it" not "I processed it".
       enable-auto-commit: false

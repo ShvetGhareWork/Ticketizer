@@ -83,6 +83,9 @@ public class OrderProcessingConsumer {
                 .seat(seat)      // Map the managed seat object
                 .status(BookingStatus.PENDING)
                 .createdAt(event.timestamp())
+                .customEventTitle(event.eventTitle())
+                .customVenue(event.venue())
+                .customStartTime(event.startTime())
                 .build();
 
         bookingRepository.save(booking);

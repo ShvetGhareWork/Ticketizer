@@ -326,7 +326,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    let idCounter = showId === 1 ? 1 : (showId === 2 ? 337 : 201);
+    let idCounter = showId === 1 ? 1 : (showId === 2 ? 337 : 517);
     rows.forEach((row) => {
       for (let col = 1; col <= colsCount; col++) {
         const seatNum = `${row}${col}`;
@@ -377,6 +377,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (seatLabel && fetchedSeats[seatLabel]) {
             fetchedSeats[seatLabel].status = s.status as SeatStatus;
             fetchedSeats[seatLabel].id = String(s.id);
+            (fetchedSeats[seatLabel] as any).isReal = true;
           }
         });
 
@@ -404,7 +405,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if ((response.status === 403 || response.status === 401) && authTokenRef.current && !isSimulatedToken) {
           setAuthToken(null);
           localStorage.removeItem('authToken');
-          setSeats({});
+          setSeats(generateInitialLocalSeats());
           setConnectionStatus('SIMULATED');
           addLog('ERROR', 'SESSION CONFLICT: Relational database rejected active token. Please sign in again.');
           return;
@@ -543,14 +544,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Only allow selecting AVAILABLE seats
     if (seat.status !== 'AVAILABLE') return;
 
+    const token = authTokenRef.current;
+    const isSimulatedToken = token?.startsWith('simulated-token-') || token?.startsWith('google-token-');
     const showId = currentShowIdRef.current;
-    const isSimulatedSeat = showId === 1
-      ? Number(seat.id) > 336
-      : showId === 2
-        ? Number(seat.id) > 672
-        : true;
 
-    if (isSimulatedSeat) {
+    const isLiveSeat = (seat as any).isReal && connectionStatus === 'ONLINE' && !isSimulatedToken;
+
+    if (!isLiveSeat) {
       // Step 2: Optimistic UI update (Amber) and update local cache
       setSeats((prev) => {
         const next = {
@@ -617,7 +617,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const showId = currentShowIdRef.current;
-      const response = await fetch(`http://localhost:8080/api/v1/reservations/show/${showId}/seat/${seat.id}`, {
+      
+      let eventTitle = '';
+      let venue = '';
+      let startTime = '';
+      try {
+        const stored = sessionStorage.getItem('currentEvent');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          eventTitle = parsed.title || '';
+          venue = parsed.venue ? `${parsed.venue}, ${parsed.city || ''}` : '';
+          
+          const eventDate = parsed.date || '';
+          const eventTime = parsed.time || '';
+          startTime = eventDate && eventTime ? `${eventDate} • ${eventTime}` : (eventDate || eventTime || '');
+        }
+      } catch (e) {
+        console.error("Failed to parse currentEvent:", e);
+      }
+
+      const response = await fetch(`http://localhost:8080/api/v1/reservations/show/${showId}/seat/${seat.id}?eventTitle=${encodeURIComponent(eventTitle)}&venue=${encodeURIComponent(venue)}&startTime=${encodeURIComponent(startTime)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

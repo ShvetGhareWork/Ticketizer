@@ -97,6 +97,16 @@ services:
       retries: 10
       start_period: 30s
 
+  # ─── Mailpit ─────────────────────────────────────────────────────────────────
+  # A local SMTP testing server. Captures all emails sent from the application
+  # and shows them in a beautiful web UI at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: ticketflow-mailpit
+    ports:
+      - "1025:1025" # SMTP port
+      - "8025:8025" # Web UI port
+
 volumes:
   pg_data:
     name: ticketflow_pg_data

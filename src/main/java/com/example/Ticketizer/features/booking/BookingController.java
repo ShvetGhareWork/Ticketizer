@@ -39,7 +39,13 @@ public class BookingController {
         return ResponseEntity.ok(Map.of(
             "bookingReference", booking.getBookingReference(),
             "status", booking.getStatus().toString(),
-            "qrCodePayload", booking.getQrCodePayload() != null ? booking.getQrCodePayload() : ""
+            "qrCodePayload", booking.getQrCodePayload() != null ? booking.getQrCodePayload() : "",
+            "eventTitle", booking.getCustomEventTitle() != null ? booking.getCustomEventTitle() : booking.getShow().getEvent().getTitle(),
+            "venue", booking.getCustomVenue() != null ? booking.getCustomVenue() : booking.getShow().getVenue(),
+            "hallName", booking.getShow().getHallName() != null ? booking.getShow().getHallName() : "",
+            "seatNumber", booking.getSeat().getSeatNumber(),
+            "price", booking.getShow().getPrice(),
+            "startTime", booking.getCustomStartTime() != null ? booking.getCustomStartTime() : booking.getShow().getStartTime().toString()
         ));
     }
 }

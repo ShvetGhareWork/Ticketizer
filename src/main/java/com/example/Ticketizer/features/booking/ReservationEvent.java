@@ -8,5 +8,8 @@ public record ReservationEvent(
         Long showId,
         Long seatId,
         Long userId,
-        Instant timestamp
+        Instant timestamp,
+        String eventTitle,
+        String venue,
+        String startTime
 ) implements Serializable {}

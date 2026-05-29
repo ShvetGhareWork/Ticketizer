@@ -19,8 +19,7 @@ import java.util.Map;
 @Configuration
 public class KafkaProducerConfig {
 
-    @Bean
-    public ProducerFactory<String, ReservationEvent> producerFactory() {
+    private ProducerFactory<String, ?> createProducerFactory() {
         Map<String, Object> configProps = new HashMap<>();
         
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
@@ -42,7 +41,24 @@ public class KafkaProducerConfig {
     }
 
     @Bean
+    @SuppressWarnings("unchecked")
+    public ProducerFactory<String, ReservationEvent> producerFactory() {
+        return (ProducerFactory<String, ReservationEvent>) createProducerFactory();
+    }
+
+    @Bean
+    @SuppressWarnings("unchecked")
+    public ProducerFactory<String, Object> producerFactoryObject() {
+        return (ProducerFactory<String, Object>) createProducerFactory();
+    }
+
+    @Bean
     public KafkaTemplate<String, ReservationEvent> kafkaTemplate() {
         return new KafkaTemplate<>(producerFactory());
+    }
+
+    @Bean
+    public KafkaTemplate<String, Object> kafkatemplate() {
+        return new KafkaTemplate<>(producerFactoryObject());
     }
 }

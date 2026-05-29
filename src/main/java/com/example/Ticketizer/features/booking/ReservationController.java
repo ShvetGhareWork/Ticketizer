@@ -82,12 +82,16 @@ public class ReservationController {
 public ResponseEntity<?> reserveSeat(
         @PathVariable Long showId,
         @PathVariable Long seatId,
+        @RequestParam(required = false) String eventTitle,
+        @RequestParam(required = false) String venue,
+        @RequestParam(required = false) String startTime,
         org.springframework.security.core.Authentication authentication) {
 
     // Extract the cryptographically validated identity context straight from principal token
     Long securedUserId = (Long) authentication.getPrincipal();
     
-    log.info("Secure fast-path ingress reservation execution loop triggered by User: {}", securedUserId);
+    log.info("Secure fast-path ingress reservation execution loop triggered by User: {} for Event: {}, Venue: {}, StartTime: {}", 
+            securedUserId, eventTitle, venue, startTime);
 
     // 1. Attempt Redis Lock
     boolean locked = reservationEngine.attemptReservation(showId, seatId, securedUserId);
@@ -103,7 +107,7 @@ public ResponseEntity<?> reserveSeat(
     String bookingId = UUID.randomUUID().toString();
 
     // 3. Dispatch Async Reservation Event to Kafka
-    ReservationEvent event = new ReservationEvent(bookingId, showId, seatId, securedUserId, Instant.now());
+    ReservationEvent event = new ReservationEvent(bookingId, showId, seatId, securedUserId, Instant.now(), eventTitle, venue, startTime);
     
     try {
         kafkaTemplate.send(TOPIC, bookingId, event);

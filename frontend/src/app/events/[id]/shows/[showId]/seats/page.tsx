@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Clock, ArrowRight, ShieldCheck, X } from "lucide-react";
+import { Clock, ArrowRight, ShieldCheck, X, Accessibility, Crown } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useApp } from "@/context/AppContext";
@@ -34,8 +34,10 @@ export default function SeatSelectionPage() {
   } = useApp();
 
   const [eventMeta, setEventMeta] = useState<{title?: string, venue?: string, city?: string} | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     if (typeof window !== 'undefined') {
       try {
         const stored = sessionStorage.getItem('currentEvent');
@@ -91,7 +93,29 @@ export default function SeatSelectionPage() {
               )
       );
 
-  const SEAT_PRICE = isSphere ? 250.0 : isStadium ? 150.0 : isTheater ? 80.0 : (showId === 1 ? 150.0 : showId === 2 ? 250.0 : 80.0);
+  // Dynamic pricing and tier helper
+  const getSeatPriceAndTier = (seatId: string) => {
+    if (!seatId) return { price: 80.0, tier: "Standard Tier" };
+    const row = seatId.charAt(0);
+    const col = parseInt(seatId.slice(1), 10);
+    
+    if (isSphere) {
+      const isPremium = ['A', 'B', 'C', 'D', 'E'].includes(row) && col >= 6 && col <= 10;
+      return isPremium 
+        ? { price: 500.0, tier: "Premium Recliner" } 
+        : { price: 250.0, tier: "Standard Tier" };
+    } else if (isStadium) {
+      const isPremium = ['A', 'B', 'C'].includes(row) && col >= 8 && col <= 17;
+      return isPremium 
+        ? { price: 350.0, tier: "VIP Club Tier" } 
+        : { price: 150.0, tier: "Standard Tier" };
+    } else {
+      const isPremium = ['A', 'B'].includes(row) && col >= 5 && col <= 8;
+      return isPremium 
+        ? { price: 150.0, tier: "Front Row VIP" } 
+        : { price: 80.0, tier: "Standard Tier" };
+    }
+  };
 
   const venueName = venue 
     ? `${venue} (${isSphere ? 'Immersive Sphere Layout' : isStadium ? 'Grand Stadium Layout' : 'Intimate Layout'})` 
@@ -100,7 +124,6 @@ export default function SeatSelectionPage() {
         : showId === 2 
           ? "Las Vegas Sphere (Immersive Sphere Layout)" 
           : "Comedy Club Theater (Intimate Layout)");
-
 
   const [timeLeft, setTimeLeft] = useState(585); // 09:45 in seconds
 
@@ -128,7 +151,6 @@ export default function SeatSelectionPage() {
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showId, params?.id, currentShowId, currentEventId]);
-
 
   useEffect(() => {
     if (timeLeft <= 0) return;
@@ -164,10 +186,23 @@ export default function SeatSelectionPage() {
   // Extract selected seat labels
   const selectedSeatsList = activeAllocation?.seatLabels || [];
   
-  // Financial calculations
-  const subtotal = selectedSeatsList.length * SEAT_PRICE;
+  // Dynamic financial calculations
+  const subtotal = selectedSeatsList.reduce((sum, seatId) => sum + getSeatPriceAndTier(seatId).price, 0);
   const fee = subtotal * FEE_PERCENT;
   const total = subtotal + fee;
+
+  if (!mounted) {
+    return (
+      <div
+        className={`min-h-screen flex flex-col items-center justify-center bg-[#F8F9FB] text-gray-900 ${jakarta.className}`}
+      >
+        <span className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></span>
+        <span className="text-xs font-bold text-gray-500 tracking-widest uppercase">
+          Initializing Dynamic Venue Map...
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -231,108 +266,201 @@ export default function SeatSelectionPage() {
           {/* LEFT: SEAT MAP CONTAINER (8 cols) */}
           <div className="lg:col-span-8 bg-white border border-gray-200 rounded-2xl p-4 sm:p-8 shadow-sm flex flex-col min-h-[600px]">
             {/* Stage Area */}
-            <div className="w-full bg-[#F0F4F8] border border-gray-200 rounded-lg py-6 sm:py-8 flex items-center justify-center mb-10">
+            <div className="w-full bg-[#F0F4F8] border border-gray-200 rounded-lg py-6 sm:py-8 flex items-center justify-center mb-16">
               <span className="text-xs sm:text-sm font-bold tracking-widest text-gray-500 uppercase">
-                Pitch / Stage
+                Pitch / Stage Area
               </span>
             </div>
 
             {/* Interactive Grid */}
-            <div className="flex-1 overflow-x-auto pb-8 no-scrollbar">
+            <div className="flex-1 overflow-x-auto pb-12 no-scrollbar">
               <div className="min-w-[600px] flex flex-col items-center mx-auto">
                 {/* Column Numbers */}
-                <div className="flex mb-4 pl-8 gap-1.5 sm:gap-2">
-                  {COLS.map((col) => (
-                    <div
-                      key={`col-${col}`}
-                      className="w-6 sm:w-7 text-center text-[9px] font-bold text-gray-400"
-                    >
-                      {col}
-                    </div>
-                  ))}
+                <div className="flex mb-6 pl-8 gap-1.5 sm:gap-2">
+                  {COLS.map((col) => {
+                    // Check if it's an aisle column (skip column label for realism)
+                    const isAisleCol = (isSphere && (col === 5 || col === 11)) ||
+                                       (isStadium && (col === 7 || col === 18)) ||
+                                       (isTheater && (col === 4 || col === 9));
+                    if (isAisleCol) {
+                      return (
+                        <div
+                          key={`col-aisle-${col}`}
+                          className="w-6 sm:w-7 text-center opacity-0 pointer-events-none"
+                        />
+                      );
+                    }
+                    return (
+                      <div
+                        key={`col-${col}`}
+                        className="w-6 sm:w-7 text-center text-[9px] font-bold text-gray-400"
+                      >
+                        {col}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Rows Grid */}
-                <div className="flex flex-col gap-1.5 sm:gap-2">
-                  {ROWS.map((row) => (
-                    <div
-                      key={`row-${row}`}
-                      className="flex items-center gap-1.5 sm:gap-2"
-                    >
-                      <div className="w-6 text-[10px] font-bold text-gray-400 text-right pr-2">
-                        {row}
+                <div className="flex flex-col gap-3">
+                  {ROWS.map((row) => {
+                    // Stadium horizontal aisle row
+                    const isAisleRow = isStadium && row === 'G';
+                    if (isAisleRow) {
+                      return (
+                        <div
+                          key={`row-aisle-${row}`}
+                          className="h-6 flex items-center justify-center text-[9px] font-bold text-gray-300 tracking-widest uppercase border-y border-dashed border-gray-100 my-1 w-full bg-gray-50/50"
+                        >
+                          CROSS WALKWAY AISLE
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={`row-${row}`}
+                        className="flex items-center gap-1.5 sm:gap-2"
+                      >
+                        <div className="w-6 text-[10px] font-bold text-gray-400 text-right pr-2">
+                          {row}
+                        </div>
+                        {COLS.map((col) => {
+                          const seatId = `${row}${col}`;
+                          const seat = seats[seatId];
+
+                          // Aisles logic
+                          const isAisle = (isSphere && (col === 5 || col === 11)) ||
+                                          (isStadium && (col === 7 || col === 18)) ||
+                                          (isTheater && (col === 4 || col === 9));
+
+                          if (isAisle) {
+                            return (
+                              <div
+                                key={`aisle-${row}-${col}`}
+                                className="w-6 h-6 sm:w-7 sm:h-7 opacity-0 pointer-events-none"
+                              />
+                            );
+                          }
+
+                          const isLocked = seat?.status === "LOCKED" && !selectedSeatsList.includes(seatId);
+                          const isBooked = seat?.status === "BOOKED";
+                          const isSelected = selectedSeatsList.includes(seatId);
+                          
+                          // Custom Tier Configurations
+                          const isWheelchair = (isSphere && row === 'L' && col >= 7 && col <= 9) ||
+                                               (isStadium && row === 'N' && [1, 2, 23, 24].includes(col)) ||
+                                               (isTheater && row === 'F' && (col === 1 || col === 12));
+
+                          const isPremium = (isSphere && ['A', 'B', 'C', 'D', 'E'].includes(row) && col >= 6 && col <= 10) ||
+                                             (isStadium && ['A', 'B', 'C'].includes(row) && col >= 8 && col <= 17) ||
+                                             (isTheater && ['A', 'B'].includes(row) && col >= 5 && col <= 8);
+
+                          let seatStyles = "bg-white border-gray-300 hover:border-blue-500 hover:scale-105 cursor-pointer text-gray-400";
+                          
+                          if (isPremium) {
+                            seatStyles = "bg-amber-50 border-amber-400 hover:border-amber-500 hover:bg-amber-100 hover:scale-105 cursor-pointer text-amber-600 shadow-[0_1px_2px_rgba(245,158,11,0.08)]";
+                          }
+                          if (isWheelchair) {
+                            seatStyles = "bg-sky-50 border-sky-300 hover:border-sky-500 hover:bg-sky-100 hover:scale-105 cursor-pointer text-sky-600 shadow-[0_1px_2px_rgba(14,165,233,0.08)]";
+                          }
+                          if (isSelected) {
+                            seatStyles = "bg-[#0D6EFD] border-[#0D6EFD] shadow-[0_0_8px_rgba(13,110,253,0.4)] z-10 scale-110 text-white cursor-pointer";
+                          }
+                          if (isLocked) {
+                            seatStyles = "bg-amber-300 border-amber-300 cursor-not-allowed opacity-75 text-amber-900";
+                          }
+                          if (isBooked) {
+                            seatStyles = "bg-gray-100 border-gray-200 cursor-not-allowed relative overflow-hidden text-gray-300";
+                          }
+
+                          // Sphere dynamic curve layout transform
+                          let seatTransform = undefined;
+                          if (isSphere) {
+                            const colDiff = col - 8;
+                            const sphereOffsetY = (colDiff * colDiff) * 1.6;
+                            const sphereRotate = colDiff * 2.2;
+                            seatTransform = {
+                              transform: `translateY(${sphereOffsetY}px) rotate(${sphereRotate}deg)`,
+                            };
+                          }
+
+                          return (
+                            <div
+                              key={seatId}
+                              onClick={() => handleSeatClick(seatId)}
+                              style={seatTransform}
+                              className={`w-6 h-6 sm:w-7 sm:h-7 border rounded-[4px] transition-all duration-200 flex items-center justify-center group ${seatStyles}`}
+                              title={`Seat ${seatId} (${isPremium ? "Premium" : isWheelchair ? "Wheelchair" : "Standard"})`}
+                            >
+                              {isBooked ? (
+                                <svg
+                                  className="w-3.5 h-3.5 text-gray-300 absolute"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                >
+                                  <path d="M18 6L6 18M6 6l12 12" />
+                                </svg>
+                              ) : isSelected ? (
+                                <span className="text-[8px] font-extrabold leading-none">{col}</span>
+                              ) : isPremium ? (
+                                <Crown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-500" />
+                              ) : isWheelchair ? (
+                                <Accessibility className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-sky-500" />
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
-                      {COLS.map((col) => {
-                        const seatId = `${row}${col}`;
-                        const seat = seats[seatId];
-                        
-                        const isLocked = seat?.status === "LOCKED" && !selectedSeatsList.includes(seatId);
-                        const isBooked = seat?.status === "BOOKED";
-                        const isSelected = selectedSeatsList.includes(seatId);
-
-                        let seatStyles =
-                          "bg-white border-gray-300 hover:border-blue-500 cursor-pointer";
-                        if (isSelected)
-                          seatStyles =
-                            "bg-[#0D6EFD] border-[#0D6EFD] shadow-[0_0_8px_rgba(13,110,253,0.4)] z-10 scale-110";
-                        if (isLocked)
-                          seatStyles =
-                            "bg-amber-300 border-amber-300 cursor-not-allowed opacity-75";
-                        if (isBooked)
-                          seatStyles =
-                            "bg-gray-100 border-gray-200 cursor-not-allowed relative overflow-hidden";
-
-                        return (
-                          <div
-                            key={seatId}
-                            onClick={() => handleSeatClick(seatId)}
-                            className={`w-6 h-6 sm:w-7 sm:h-7 border rounded-[3px] transition-all duration-200 flex items-center justify-center group ${seatStyles}`}
-                          >
-                            {isBooked && (
-                              <svg
-                                className="w-4 h-4 text-gray-300 absolute"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                              >
-                                <path d="M18 6L6 18M6 6l12 12" />
-                              </svg>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
             {/* Legend */}
-            <div className="flex flex-wrap justify-center sm:justify-between items-center gap-4 pt-6 border-t border-gray-100 mt-auto">
+            <div className="flex flex-wrap justify-center sm:justify-between items-center gap-4 pt-8 border-t border-gray-100 mt-auto">
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-white border border-gray-300 rounded-[2px]"></div>
-                <span className="text-[10px] font-bold tracking-widest text-gray-600 uppercase">
+                <div className="w-4 h-4 bg-white border border-gray-300 rounded-[3px]"></div>
+                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
                   Available
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-[#0D6EFD] rounded-[2px]"></div>
-                <span className="text-[10px] font-bold tracking-widest text-gray-600 uppercase">
+                <div className="w-4 h-4 bg-amber-50 border border-amber-400 rounded-[3px] flex items-center justify-center">
+                  <Crown className="w-2 h-2 text-amber-500" />
+                </div>
+                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
+                  Premium Tier
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-sky-50 border border-sky-300 rounded-[3px] flex items-center justify-center">
+                  <Accessibility className="w-2 h-2 text-sky-500" />
+                </div>
+                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
+                  Accessible
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-[#0D6EFD] rounded-[3px]"></div>
+                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
                   Selected
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-amber-300 rounded-[2px] opacity-75"></div>
-                <span className="text-[10px] font-bold tracking-widest text-gray-600 uppercase">
+                <div className="w-4 h-4 bg-amber-300 rounded-[3px] opacity-75"></div>
+                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
                   Locked
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded-[2px] flex items-center justify-center">
+                <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded-[3px] flex items-center justify-center">
                   <X size={10} className="text-gray-300" />
                 </div>
-                <span className="text-[10px] font-bold tracking-widest text-gray-600 uppercase">
+                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">
                   Booked
                 </span>
               </div>
@@ -357,32 +485,35 @@ export default function SeatSelectionPage() {
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2 no-scrollbar">
-                    {selectedSeatsList.map((seat) => (
-                      <div
-                        key={seat}
-                        className="flex justify-between items-center bg-[#F8F9FB] p-3 rounded-lg border border-gray-100"
-                      >
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">
-                            Seat {seat}
-                          </p>
-                          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
-                            Standard Tier
-                          </p>
+                    {selectedSeatsList.map((seat) => {
+                      const { price, tier } = getSeatPriceAndTier(seat);
+                      return (
+                        <div
+                          key={seat}
+                          className="flex justify-between items-center bg-[#F8F9FB] p-3 rounded-lg border border-gray-100"
+                        >
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">
+                              Seat {seat}
+                            </p>
+                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                              {tier}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono font-bold text-blue-700">
+                              ${price.toFixed(2)}
+                            </span>
+                            <button
+                              onClick={() => handleSeatClick(seat)}
+                              className="text-gray-400 hover:text-red-500 transition-colors"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-bold text-blue-700">
-                            ${SEAT_PRICE.toFixed(2)}
-                          </span>
-                          <button
-                            onClick={() => handleSeatClick(seat)}
-                            className="text-gray-400 hover:text-red-500 transition-colors"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

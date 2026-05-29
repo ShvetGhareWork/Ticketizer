@@ -12,6 +12,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.example.Ticketizer.shared.utils.QrCodeGeneratorService;
+import com.example.Ticketizer.features.auth.User;
+import com.example.Ticketizer.features.auth.UserRepository;
+import com.example.Ticketizer.config.NoftificationPublisherProducer;
+import com.example.Ticketizer.features.booking.TicketNotificationEvent;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +26,8 @@ public class PaymentSettlementService {
     private final SeatRepository seatRepository;
     private final StringRedisTemplate redisTemplate;
     private final QrCodeGeneratorService qrCodeGeneratorService;
+    private final UserRepository userRepository;
+    private final NoftificationPublisherProducer notificationPublisherProducer;
 
     @Transactional
     public void fulfillOrder(PaymentCallbackRequest request) {
@@ -49,54 +55,73 @@ public class PaymentSettlementService {
             throw new IllegalArgumentException("Booking reference not found after retries: " + request.bookingReference());
         }
 
-        if (booking.getStatus() != BookingStatus.PENDING) {
+        final Booking finalBooking = booking;
+
+        if (finalBooking.getStatus() != BookingStatus.PENDING) {
             log.warn("Booking ref: {} is already processed ({}). Aborting duplicate settlement step.", 
-                    request.bookingReference(), booking.getStatus());
+                    request.bookingReference(), finalBooking.getStatus());
             return;
         }
 
         if ("SUCCESS".equalsIgnoreCase(request.paymentStatus())) {
             // Happy Path: Finalize state vectors across DB
-            booking.setStatus(BookingStatus.CONFIRMED);
-            booking.getSeat().setStatus(SeatStatus.BOOKED);
+            finalBooking.setStatus(BookingStatus.CONFIRMED);
+            finalBooking.getSeat().setStatus(SeatStatus.BOOKED);
             
             // Compile ticket structural parameters into a lightweight verification manifest string
             String ticketManifest = String.format(
                     "{\"ref\":\"%s\",\"showId\":%d,\"seat\":\"%s\",\"userId\":%d,\"timestamp\":\"%s\"}",
-                    booking.getBookingReference(),
-                    booking.getShow().getId(),
-                    booking.getSeat().getSeatNumber(),
-                    booking.getUserId(),
+                    finalBooking.getBookingReference(),
+                    finalBooking.getShow().getId(),
+                    finalBooking.getSeat().getSeatNumber(),
+                    finalBooking.getUserId(),
                     java.time.Instant.now().toString()
             );
 
             // Generate secure Base64 image layout data mapping
             String base64QrImage = qrCodeGeneratorService.generateQrCodeBase64(ticketManifest);
-            booking.setQrCodePayload(base64QrImage); // Persist directly into the table context
+            finalBooking.setQrCodePayload(base64QrImage); // Persist directly into the table context
             
-            bookingRepository.save(booking);
-            seatRepository.save(booking.getSeat());
+            bookingRepository.save(finalBooking);
+            seatRepository.save(finalBooking.getSeat());
 
             // Evict lock registration metadata block cleanly out of Redis memory mapping space
-            String lockedHashKey = "show:" + booking.getShow().getId() + ":locked_seats";
-            redisTemplate.opsForHash().delete(lockedHashKey, String.valueOf(booking.getSeat().getId()));
+            String lockedHashKey = "show:" + finalBooking.getShow().getId() + ":locked_seats";
+            redisTemplate.opsForHash().delete(lockedHashKey, String.valueOf(finalBooking.getSeat().getId()));
             
-            log.info("State convergence complete. Secure entry QR token appended to booking reference {}.", booking.getBookingReference());
+            log.info("State convergence complete. Secure entry QR token appended to booking reference {}.", finalBooking.getBookingReference());
+
+            // Retrieve User details to populate the notification payload
+            User user = userRepository.findById(finalBooking.getUserId())
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for ID: " + finalBooking.getUserId()));
+
+            TicketNotificationEvent notificationEvent = new TicketNotificationEvent(
+                    finalBooking.getBookingReference(),
+                    user.getEmail(),
+                    user.getFullName(),
+                    finalBooking.getCustomEventTitle() != null ? finalBooking.getCustomEventTitle() : finalBooking.getShow().getEvent().getTitle(),
+                    finalBooking.getSeat().getSeatNumber(),
+                    finalBooking.getCustomStartTime() != null ? finalBooking.getCustomStartTime() : (finalBooking.getShow().getStartTime() != null ? finalBooking.getShow().getStartTime().toString() : java.time.Instant.now().toString()),
+                    base64QrImage
+            );
+
+            // Publish the ticket confirmation event async to Kafka
+            notificationPublisherProducer.publishConfrimationEvent(notificationEvent);
         } else {
             // Sad Path: Gateway reports payment failure. Delegate to clear up operations
             log.warn("Payment failed for reference {}. Releasing locked slots back to game loops.", request.bookingReference());
-            booking.setStatus(BookingStatus.CANCELLED);
-            booking.getSeat().setStatus(SeatStatus.AVAILABLE);
+            finalBooking.setStatus(BookingStatus.CANCELLED);
+            finalBooking.getSeat().setStatus(SeatStatus.AVAILABLE);
             
-            bookingRepository.save(booking);
-            seatRepository.save(booking.getSeat());
+            bookingRepository.save(finalBooking);
+            seatRepository.save(finalBooking.getSeat());
 
             // Put capacity back into Redis Sets using our structural components
-            String availableSetKey = "show:" + booking.getShow().getId() + ":available_seats";
-            String lockedHashKey = "show:" + booking.getShow().getId() + ":locked_seats";
+            String availableSetKey = "show:" + finalBooking.getShow().getId() + ":available_seats";
+            String lockedHashKey = "show:" + finalBooking.getShow().getId() + ":locked_seats";
             
-            redisTemplate.opsForHash().delete(lockedHashKey, String.valueOf(booking.getSeat().getId()));
-            redisTemplate.opsForSet().add(availableSetKey, String.valueOf(booking.getSeat().getId()));
+            redisTemplate.opsForHash().delete(lockedHashKey, String.valueOf(finalBooking.getSeat().getId()));
+            redisTemplate.opsForSet().add(availableSetKey, String.valueOf(finalBooking.getSeat().getId()));
         }
     }
 }

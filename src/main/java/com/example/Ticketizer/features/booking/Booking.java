@@ -45,4 +45,13 @@ public class Booking {
 
     @Column(name = "qr_code_payload", columnDefinition = "TEXT")
     private String qrCodePayload;
+
+    @Column(name = "custom_event_title")
+    private String customEventTitle;
+
+    @Column(name = "custom_venue")
+    private String customVenue;
+
+    @Column(name = "custom_start_time")
+    private String customStartTime;
 }

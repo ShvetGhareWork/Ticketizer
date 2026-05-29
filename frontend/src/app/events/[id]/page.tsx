@@ -36,7 +36,9 @@ export default function EventDetailPage() {
   const [activeTab, setActiveTab] = useState("ABOUT");
   const [eventData, setEventData] = useState<MappedEventDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedShowId, setSelectedShowId] = useState<number>(1);
+  const [selectedShowId, setSelectedShowId] = useState<number | null>(null);
+  const [scarcityLabel, setScarcityLabel] = useState<string>("AVAILABLE");
+  const [scarcityColor, setScarcityColor] = useState<string>("bg-green-600 text-white");
 
   useEffect(() => {
     if (!id) return;
@@ -121,6 +123,54 @@ export default function EventDetailPage() {
     fetchEventDetails();
   }, [id]);
 
+  useEffect(() => {
+    if (!eventData) return;
+    const lowerVenue = eventData.venue.toLowerCase();
+    const isSphere = lowerVenue.includes("sphere");
+    const isTheater = lowerVenue.includes("theater") || lowerVenue.includes("comedy") || lowerVenue.includes("club");
+    const showId = isSphere ? 2 : isTheater ? 3 : 1;
+
+    const fetchScarcity = async () => {
+      try {
+        const res = await fetch(`http://localhost:8080/api/v1/reservations/show/${showId}/seats`);
+        if (res.ok) {
+          const data = await res.json();
+          const availableCount = data.filter((s: any) => s.status === 'AVAILABLE').length;
+          const totalCount = data.length || (isSphere ? 180 : isTheater ? 72 : 336);
+          
+          if (availableCount === 0) {
+            setScarcityLabel("SOLD OUT");
+            setScarcityColor("bg-gray-500 text-white");
+          } else if (availableCount < 20) {
+            setScarcityLabel(`${availableCount} SEATS LEFT`);
+            setScarcityColor("bg-red-600 text-white");
+          } else if (availableCount <= totalCount / 2) {
+            setScarcityLabel("FAST FILLING");
+            setScarcityColor("bg-amber-600 text-white");
+          } else {
+            setScarcityLabel("AVAILABLE");
+            setScarcityColor("bg-green-600 text-white");
+          }
+        }
+      } catch (err) {
+        // Fallback default states if backend is offline
+        const mockAvailable = isSphere ? 90 : isTheater ? 45 : 10;
+        const totalCount = isSphere ? 180 : isTheater ? 72 : 336;
+        if (mockAvailable < 20) {
+          setScarcityLabel(`${mockAvailable} SEATS LEFT`);
+          setScarcityColor("bg-red-600 text-white");
+        } else if (mockAvailable <= totalCount / 2) {
+          setScarcityLabel("FAST FILLING");
+          setScarcityColor("bg-amber-600 text-white");
+        } else {
+          setScarcityLabel("AVAILABLE");
+          setScarcityColor("bg-green-600 text-white");
+        }
+      }
+    };
+    fetchScarcity();
+  }, [eventData]);
+
   if (loading) {
     return (
       <div
@@ -153,37 +203,47 @@ export default function EventDetailPage() {
   }
 
   const isSphere = eventData.venue.toLowerCase().includes("sphere");
-  const baseShowId = isSphere ? 1 : 2;
+  const isStadium = eventData.venue.toLowerCase().includes("sofi") || 
+                    eventData.venue.toLowerCase().includes("stadium") || 
+                    eventData.venue.toLowerCase().includes("field") || 
+                    eventData.venue.toLowerCase().includes("modi") || 
+                    eventData.venue.toLowerCase().includes("wankhede") || 
+                    eventData.title.toLowerCase().includes("world cup");
+  const isTheater = eventData.venue.toLowerCase().includes("theater") || 
+                    eventData.venue.toLowerCase().includes("comedy") || 
+                    eventData.venue.toLowerCase().includes("club");
 
-  const shows = [
-    {
-      id: baseShowId,
-      date: eventData.date,
-      time: eventData.time,
-      location: eventData.city.toUpperCase(),
-      price: eventData.priceRange.split(" - ")[0],
-      scarcityLabel: "10 SEATS LEFT",
-      scarcityColor: "bg-red-600 text-white",
-    },
-    {
-      id: baseShowId === 1 ? 2 : 1, // Swap so that they alternate seeded databases
-      date: eventData.date,
-      time: "09:30 PM",
-      location: eventData.city.toUpperCase(),
-      price: eventData.priceRange.split(" - ")[0],
-      scarcityLabel: "FAST FILLING",
-      scarcityColor: "bg-amber-600 text-white",
-    },
-    {
-      id: 3, // Sandbox simulated fallback
-      date: "Mon, 25 May 2026",
-      time: "07:30 PM",
-      location: eventData.city.toUpperCase(),
-      price: eventData.priceRange.split(" - ")[0],
-      scarcityLabel: "AVAILABLE",
-      scarcityColor: "bg-green-600 text-white",
-    },
-  ];
+  const selectedShow = isSphere 
+    ? {
+        id: 2,
+        date: eventData.date,
+        time: eventData.time,
+        location: eventData.city.toUpperCase(),
+        price: eventData.priceRange.split(" - ")[0],
+        scarcityLabel: scarcityLabel,
+        scarcityColor: scarcityColor,
+      }
+    : isTheater
+      ? {
+          id: 3,
+          date: eventData.date,
+          time: eventData.time,
+          location: eventData.city.toUpperCase(),
+          price: eventData.priceRange.split(" - ")[0],
+          scarcityLabel: scarcityLabel,
+          scarcityColor: scarcityColor,
+        }
+      : {
+          id: 1, // Default Stadium
+          date: eventData.date,
+          time: eventData.time,
+          location: eventData.city.toUpperCase(),
+          price: eventData.priceRange.split(" - ")[0],
+          scarcityLabel: scarcityLabel,
+          scarcityColor: scarcityColor,
+        };
+
+  const shows = [selectedShow];
 
   return (
     <div
@@ -356,25 +416,35 @@ export default function EventDetailPage() {
                 </div>
 
                 {/* Main CTA */}
-                <Link
-                  href={`/events/${id}/shows/${selectedShowId}/seats`}
-                  onClick={() => {
-                    // Store event context in sessionStorage for use on the seats page
-                    if (eventData) {
-                      sessionStorage.setItem('currentEvent', JSON.stringify({
-                        id: eventData.id,
-                        title: eventData.title,
-                        venue: eventData.venue,
-                        city: eventData.city,
-                        date: shows.find(s => s.id === selectedShowId)?.date || eventData.date,
-                        time: shows.find(s => s.id === selectedShowId)?.time || eventData.time,
-                      }));
-                    }
-                  }}
-                  className="w-full bg-[#0D6EFD] text-white py-3.5 rounded-lg font-bold text-xs sm:text-sm tracking-widest uppercase hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center gap-2"
-                >
-                  Select Seats <ArrowRight size={16} />
-                </Link>
+                {selectedShowId !== null ? (
+                  <Link
+                    href={`/events/${id}/shows/${selectedShowId}/seats`}
+                    onClick={() => {
+                      // Store event context in sessionStorage for use on the seats page
+                      if (eventData) {
+                        sessionStorage.setItem('currentEvent', JSON.stringify({
+                          id: eventData.id,
+                          title: eventData.title,
+                          venue: eventData.venue,
+                          city: eventData.city,
+                          image: eventData.image,
+                          date: shows.find(s => s.id === selectedShowId)?.date || eventData.date,
+                          time: shows.find(s => s.id === selectedShowId)?.time || eventData.time,
+                        }));
+                      }
+                    }}
+                    className="w-full bg-[#0D6EFD] text-white py-3.5 rounded-lg font-bold text-xs sm:text-sm tracking-widest uppercase hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center gap-2"
+                  >
+                    Select Seats <ArrowRight size={16} />
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full bg-gray-200 text-gray-400 py-3.5 rounded-lg font-bold text-xs sm:text-sm tracking-widest uppercase cursor-not-allowed flex items-center justify-center gap-2 shadow-none"
+                  >
+                    Select Seats <ArrowRight size={16} />
+                  </button>
+                )}
               </div>
 
               {/* Warning Banner */}
