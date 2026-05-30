@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
 // Initialize the premium, extensive font
 const jakarta = Plus_Jakarta_Sans({
@@ -518,88 +519,7 @@ export default function TicketizerLanding() {
       </main>
 
       {/* FOOTER */}
-      <footer className="bg-white border-t border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 lg:py-16 flex flex-col md:flex-row justify-between gap-12">
-          <div className="max-w-xs text-center md:text-left mx-auto md:mx-0">
-            <Link
-              href="/"
-              className="font-extrabold text-xl tracking-tight mb-4 text-blue-900 flex items-center justify-center md:justify-start gap-2 cursor-pointer"
-            >
-              <div className="w-3 h-3 bg-[#BFFF00]"></div>
-              Ticketizer
-            </Link>
-            <p className="text-gray-500 text-xs font-medium">
-              © 2026 Ticketizer. Seats don&apos;t wait.
-            </p>
-          </div>
-
-          <div className="flex justify-center md:justify-start gap-16 md:gap-24">
-            <div>
-              <h4 className="text-xs font-bold tracking-widest text-gray-900 uppercase mb-6">
-                Product
-              </h4>
-              <ul className="space-y-4 text-sm text-gray-500 font-medium">
-                <li>
-                  <Link
-                    href="#"
-                    className="hover:text-blue-600 transition-colors"
-                  >
-                    Help
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    href="#"
-                    className="hover:text-blue-600 transition-colors"
-                  >
-                    About
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    href="#"
-                    className="hover:text-blue-600 transition-colors"
-                  >
-                    Contact
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-xs font-bold tracking-widest text-gray-900 uppercase mb-6">
-                Legal
-              </h4>
-              <ul className="space-y-4 text-sm text-gray-500 font-medium">
-                <li>
-                  <Link
-                    href="#"
-                    className="hover:text-blue-600 transition-colors"
-                  >
-                    Privacy
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    href="#"
-                    className="hover:text-blue-600 transition-colors"
-                  >
-                    Terms
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="flex justify-center md:justify-end gap-4 items-start">
-            <button className="w-10 h-10 border border-gray-200 rounded-full flex items-center justify-center text-gray-600 hover:text-blue-600 hover:border-blue-600 transition-colors bg-gray-50 cursor-pointer">
-              <Share2 size={16} />
-            </button>
-            <button className="w-10 h-10 border border-gray-200 rounded-full flex items-center justify-center text-gray-600 hover:text-blue-600 hover:border-blue-600 transition-colors bg-gray-50 cursor-pointer">
-              <Bell size={16} />
-            </button>
-          </div>
-        </div>
-      </footer>
+      <Footer />
 
       {/* CSS for marquee animation & utilities */}
       <style
