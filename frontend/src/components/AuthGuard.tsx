@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { authToken } = useApp();
+  const { authToken, isVerified } = useApp();
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
@@ -19,18 +19,24 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!mounted) return;
 
     const isAuthPage = pathname?.startsWith('/auth');
+    const isVerifyPage = pathname?.startsWith('/auth/verify');
     // Events pages are public — users can browse without logging in
     const isEventsPage = pathname?.startsWith('/events');
     const isPublicPage = pathname === '/' || isAuthPage || isEventsPage;
 
     if (!authToken && !isPublicPage) {
       router.push('/auth/login');
-    } else if (authToken && isAuthPage) {
-      router.push('/');
+    } else if (authToken) {
+      if (!isVerified && !isVerifyPage) {
+        router.push('/auth/verify');
+      } else if (isVerified && isAuthPage) {
+        router.push('/');
+      }
     }
-  }, [authToken, pathname, router, mounted]);
+  }, [authToken, isVerified, pathname, router, mounted]);
 
   const isAuthPage = pathname?.startsWith('/auth');
+  const isVerifyPage = pathname?.startsWith('/auth/verify');
   const isEventsPage = pathname?.startsWith('/events');
   const isPublicPage = pathname === '/' || isAuthPage || isEventsPage;
 

@@ -26,4 +26,20 @@ public class User {
     @Builder.Default
     @Column(nullable = false)
     private String provider = "LOCAL";
+
+    @Column(name = "phone_number")
+    private String phoneNumber;
+
+    @Column(name = "is_verified", nullable = false)
+    @Builder.Default
+    private boolean isVerified = false;
+
+    @Column(name = "otp_code", length = 6)
+    private String otpCode;
+
+    @Column(name = "otp_expiry")
+    private java.time.Instant otpExpiry;
+
+    @Column(name = "verification_method")
+    private String verificationMethod; // "EMAIL" or "SMS"
 }

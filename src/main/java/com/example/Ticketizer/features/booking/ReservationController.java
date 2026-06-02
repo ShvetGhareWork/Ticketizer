@@ -11,6 +11,7 @@ import com.example.Ticketizer.features.booking.ReservationResponse;
 import com.example.Ticketizer.features.booking.BookingRepository;
 import com.example.Ticketizer.features.inventory.SeatRepository;
 import com.example.Ticketizer.features.inventory.ShowRepository;
+import com.example.Ticketizer.features.auth.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -40,6 +41,7 @@ public class ReservationController {
     private final SeatRepository seatRepository;
     private final ShowRepository showRepository;
     private final InventoryWarmUpWorker inventoryWarmUpWorker;
+    private final UserRepository userRepository;
     // private final ReservationService reservationService;
     
     private static final String TOPIC = "ticket-reservations";
@@ -93,6 +95,17 @@ public ResponseEntity<?> reserveSeat(
     log.info("Secure fast-path ingress reservation execution loop triggered by User: {} for Event: {}, Venue: {}, StartTime: {}", 
             securedUserId, eventTitle, venue, startTime);
 
+    // 0. Enforce verification check for local manual users
+    com.example.Ticketizer.features.auth.User user = userRepository.findById(securedUserId)
+            .orElseThrow(() -> new IllegalArgumentException("Authenticated user entity not found: " + securedUserId));
+    if ("LOCAL".equals(user.getProvider()) && !user.isVerified()) {
+        log.warn("Access Denied: Unverified local user {} attempted to reserve seat {}.", securedUserId, seatId);
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+            "status", "UNVERIFIED",
+            "message", "Please verify your account using OTP to unlock ticket bookings."
+        ));
+    }
+
     // 1. Attempt Redis Lock
     boolean locked = reservationEngine.attemptReservation(showId, seatId, securedUserId);
     if (!locked) {
@@ -136,7 +149,10 @@ public ResponseEntity<?> reserveSeat(
         // 1. Delete all booking records
         bookingRepository.deleteAllInBatch();
         
-        // 2. Reset all seats to AVAILABLE in the relational database
+        // 2. Delete all user accounts to allow fresh sign-ups
+        userRepository.deleteAllInBatch();
+        
+        // 3. Reset all seats to AVAILABLE in the relational database
         List<Seat> allSeats = seatRepository.findAll();
         for (Seat seat : allSeats) {
             seat.setStatus(SeatStatus.AVAILABLE);

@@ -52,9 +52,9 @@ public class EmailService {
             for (int i = 0; i < qrCodes.length; i++) {
                 String seatLabel = i < seats.length ? seats[i] : "";
                 qrHtml.append(
-                    "            <div style='display: inline-block; margin: 10px; padding: 12px; background-color: #ffffff; border: 2px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); text-align: center;'>" +
+                    "            <div class='qr-card-container' style='display: inline-block; margin: 10px; padding: 12px; background-color: #ffffff; border: 2px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); text-align: center;'>" +
                     "              <p style='margin: 0 0 8px 0; font-size: 11px; font-weight: bold; color: #0d6efd;'>SEAT " + seatLabel + "</p>" +
-                    "              <img src=\"cid:qrCode_" + i + "\" alt=\"Ticket QR Code\" style=\"width: 140px; height: 140px; display: block;\" />" +
+                    "              <img src=\"cid:qrCode_" + i + "\" alt=\"Ticket QR Code\" style=\"width: 140px; height: 140px; display: block; margin: 0 auto;\" />" +
                     "            </div>"
                 );
             }
@@ -67,26 +67,55 @@ public class EmailService {
                 "  <meta charset='utf-8'>" +
                 "  <meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
                 "  <title>Your Ticket Confirmation</title>" +
+                "  <style>" +
+                "    @media only screen and (max-width: 600px) {" +
+                "      .email-container {" +
+                "        width: 100%% !important;" +
+                "        max-width: 100%% !important;" +
+                "        border-radius: 0 !important;" +
+                "      }" +
+                "      .mobile-padding {" +
+                "        padding: 20px 16px !important;" +
+                "      }" +
+                "      .mobile-col {" +
+                "        display: block !important;" +
+                "        width: 100%% !important;" +
+                "        box-sizing: border-box !important;" +
+                "      }" +
+                "      .mobile-margin-bottom {" +
+                "        margin-bottom: 15px !important;" +
+                "      }" +
+                "      .mobile-align-right {" +
+                "        text-align: left !important;" +
+                "        margin-top: 10px !important;" +
+                "      }" +
+                "      .qr-card-container {" +
+                "        display: block !important;" +
+                "        margin: 10px auto !important;" +
+                "        max-width: 180px !important;" +
+                "      }" +
+                "    }" +
+                "  </style>" +
                 "</head>" +
                 "<body style='margin: 0; padding: 0; background-color: #F4F6F9; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;'>" +
                 "  <table role='presentation' border='0' cellpadding='0' cellspacing='0' width='100%%' style='background-color: #F4F6F9; padding: 20px 0;'>" +
                 "    <tr>" +
                 "      <td align='center' valign='top'>" +
-                "        <div style='max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>" +
+                "        <div class='email-container' style='width: 100%%; max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>" +
                 "          " +
                 "          <!-- HEADER BANNER IMAGE -->" +
-                "          <div style='width: 100%%; height: 180px; background: linear-gradient(135deg, #0d6efd 0%%, #002D62 100%%); relative; overflow: hidden;'>" +
+                "          <div style='width: 100%%; height: 180px; background: linear-gradient(135deg, #0d6efd 0%%, #002D62 100%%); position: relative; overflow: hidden;'>" +
                 "            <img src='%s' alt='Event Banner' style='width: 100%%; height: 100%%; object-fit: cover; opacity: 0.85;' />" +
                 "          </div>" +
                 "          " +
                 "          <!-- BRAND HEADER -->" +
-                "          <div style='padding: 24px 32px 0 32px; text-align: left;'>" +
+                "          <div class='mobile-padding' style='padding: 24px 32px 0 32px; text-align: left;'>" +
                 "            <table width='100%%' border='0' cellspacing='0' cellpadding='0'>" +
                 "              <tr>" +
-                "                <td>" +
+                "                <td class='mobile-col'>" +
                 "                  <span style='display: inline-block; padding: 6px 12px; background-color: #E2ECFF; color: #0d6efd; font-size: 11px; font-weight: 850; letter-spacing: 1.5px; border-radius: 50px; text-transform: uppercase;'>Order Confirmed</span>" +
                 "                </td>" +
-                "                <td style='text-align: right; font-weight: 800; font-size: 18px; color: #002D62; letter-spacing: -0.5px;'>" +
+                "                <td class='mobile-col mobile-align-right' style='text-align: right; font-weight: 800; font-size: 18px; color: #002D62; letter-spacing: -0.5px;'>" +
                 "                  <span style='color: #0d6efd;'>●</span> Ticketizer" +
                 "                </td>" +
                 "              </tr>" +
@@ -96,27 +125,27 @@ public class EmailService {
                 "          </div>" +
                 "          " +
                 "          <!-- TICKET STUB CONTENT -->" +
-                "          <div style='margin: 24px 32px; padding: 24px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;'>" +
+                "          <div class='mobile-padding' style='margin: 24px 32px; padding: 24px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;'>" +
                 "            <p style='margin: 0 0 4px 0; font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px;'>Event Title</p>" +
                 "            <h2 style='margin: 0 0 16px 0; font-size: 22px; font-weight: 800; color: #0F172A; text-transform: uppercase; line-height: 1.2;'>%s</h2>" +
                 "            " +
                 "            <table width='100%%' border='0' cellspacing='0' cellpadding='0' style='border-top: 1px solid #E2E8F0; padding-top: 16px;'>" +
                 "              <tr>" +
-                "                <td width='50%%' style='vertical-align: top; padding-bottom: 12px;'>" +
+                "                <td class='mobile-col mobile-margin-bottom' width='50%%' style='vertical-align: top;'>" +
                 "                  <p style='margin: 0 0 2px 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px;'>Booking Reference</p>" +
                 "                  <p style='margin: 0; font-size: 13px; font-weight: 700; color: #334155; font-family: monospace;'>#%s</p>" +
                 "                </td>" +
-                "                <td width='50%%' style='vertical-align: top; padding-bottom: 12px;'>" +
+                "                <td class='mobile-col mobile-margin-bottom' width='50%%' style='vertical-align: top;'>" +
                 "                  <p style='margin: 0 0 2px 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px;'>Show Time</p>" +
                 "                  <p style='margin: 0; font-size: 13px; font-weight: 700; color: #334155;'>%s</p>" +
                 "                </td>" +
                 "              </tr>" +
                 "              <tr>" +
-                "                <td width='50%%' style='vertical-align: top;'>" +
+                "                <td class='mobile-col mobile-margin-bottom' width='50%%' style='vertical-align: top;'>" +
                 "                  <p style='margin: 0 0 2px 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px;'>Seats Allocated</p>" +
                 "                  <p style='margin: 0; font-size: 15px; font-weight: 800; color: #0d6efd;'>%s</p>" +
                 "                </td>" +
-                "                <td width='50%%' style='vertical-align: top;'>" +
+                "                <td class='mobile-col' width='50%%' style='vertical-align: top;'>" +
                 "                  <p style='margin: 0 0 2px 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px;'>Admission Type</p>" +
                 "                  <p style='margin: 0; font-size: 13px; font-weight: 700; color: #334155;'>Standard Entry</p>" +
                 "                </td>" +
@@ -125,20 +154,20 @@ public class EmailService {
                 "          </div>" +
                 "          " +
                 "          <!-- PERFORATION LINE -->" +
-                "          <div style='height: 1px; border-top: 2px dashed #E2E8F0; margin: 0 16px; relative;'>" +
+                "          <div style='height: 1px; border-top: 2px dashed #E2E8F0; margin: 0 16px; position: relative;'>" +
                 "            <div style='position: absolute; left: -24px; top: -10px; width: 20px; height: 20px; background-color: #F4F6F9; border-radius: 50%%;'></div>" +
                 "            <div style='position: absolute; right: -24px; top: -10px; width: 20px; height: 20px; background-color: #F4F6F9; border-radius: 50%%;'></div>" +
                 "          </div>" +
                 "          " +
                 "          <!-- QR CARD -->" +
-                "          <div style='padding: 32px; text-align: center; background-color: #FCFDFE;'>" +
+                "          <div class='mobile-padding' style='padding: 32px; text-align: center; background-color: #FCFDFE;'>" +
                 "            <p style='margin: 0 0 16px 0; font-size: 14px; font-weight: 700; color: #334155;'>Scan these digital tokens at the entrance gate:</p>" +
                 "            %s" +
                 "            <p style='margin: 12px 0 0 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px;'>Authorized Entry Code</p>" +
                 "          </div>" +
                 "          " +
                 "          <!-- ENTRY DETAILS CHECKLIST -->" +
-                "          <div style='padding: 24px 32px; background-color: #F8FAFC; border-top: 1px solid #E2E8F0;'>" +
+                "          <div class='mobile-padding' style='padding: 24px 32px; background-color: #F8FAFC; border-top: 1px solid #E2E8F0;'>" +
                 "            <h4 style='margin: 0 0 12px 0; font-size: 12px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;'>Important Instructions</h4>" +
                 "            <ul style='margin: 0; padding: 0 0 0 16px; font-size: 13px; color: #64748B; line-height: 1.6; font-weight: 500;'>" +
                 "              <li style='margin-bottom: 6px;'>Please arrive <strong>60-90 minutes</strong> before showtime.</li>" +
@@ -209,6 +238,30 @@ public class EmailService {
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Failed to send ticket confirmation email", e);
+        }
+    }
+
+    public void sendOtpEmail(String recipientEmail, String otp) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            
+            helper.setTo(recipientEmail);
+            helper.setSubject("Verify Your Ticketizer Account");
+            
+            String htmlBody = String.format(
+                "<html><body style='font-family: Arial, sans-serif; text-align: center; padding: 40px;'>" +
+                "  <h2>Welcome to Ticketizer!</h2>" +
+                "  <p>Use the secure OTP code below to verify your account and unlock seat bookings:</p>" +
+                "  <h1 style='color: #0d6efd; letter-spacing: 4px; font-size: 36px; margin: 20px 0;'>%s</h1>" +
+                "  <p style='color: #94A3B8; font-size: 12px;'>This code will expire in 10 minutes.</p>" +
+                "</body></html>", otp
+            );
+            
+            helper.setText(htmlBody, true);
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send OTP email", e);
         }
     }
 }

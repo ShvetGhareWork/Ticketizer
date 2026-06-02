@@ -17,18 +17,16 @@ CREATE TYPE booking_status AS ENUM ('PENDING', 'CONFIRMED', 'EXPIRED', 'CANCELLE
 
 -- ── users ─────────────────────────────────────────────────────────────────────
 CREATE TABLE users (
-    id        BIGSERIAL    PRIMARY KEY,
-    full_name VARCHAR(255),
-    email     VARCHAR(255) NOT NULL UNIQUE,
-    password  VARCHAR(255),
-    provider  VARCHAR(50)  NOT NULL DEFAULT 'LOCAL'
-);
-
--- ── venues (NEW: Static Geography) ────────────────────────────────────────────
-CREATE TABLE venues (
-    id             BIGSERIAL    PRIMARY KEY,
-    name           VARCHAR(255) NOT NULL UNIQUE,
-    total_capacity INT          NOT NULL CHECK (total_capacity > 0)
+    id                  BIGSERIAL    PRIMARY KEY,
+    full_name           VARCHAR(255),
+    email               VARCHAR(255) NOT NULL UNIQUE,
+    password            VARCHAR(255),
+    provider            VARCHAR(50)  NOT NULL DEFAULT 'LOCAL',
+    phone_number        VARCHAR(50),
+    is_verified         BOOLEAN      NOT NULL DEFAULT FALSE,
+    otp_code            VARCHAR(6),
+    otp_expiry          TIMESTAMP,
+    verification_method VARCHAR(20)
 );
 
 -- ── events (The overarching entity, e.g., "Aurora Festival") ──────────────────
@@ -44,11 +42,12 @@ CREATE TABLE events (
 CREATE TABLE shows (
     id             BIGSERIAL      PRIMARY KEY,
     event_id       BIGINT         NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    venue_id       BIGINT         NOT NULL REFERENCES venues(id) ON DELETE RESTRICT,
+    venue          VARCHAR(255)   NOT NULL,
     start_time     TIMESTAMPTZ    NOT NULL,
     end_time       TIMESTAMPTZ    NOT NULL,
     price          NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
     hall_name      VARCHAR(255),
+    total_capacity INT            NOT NULL CHECK (total_capacity > 0),
     
     CONSTRAINT chk_time_validity CHECK (end_time > start_time)
 );
@@ -56,11 +55,12 @@ CREATE TABLE shows (
 -- ── seats (Static Map) ────────────────────────────────────────────────────────
 CREATE TABLE seats (
     id          BIGSERIAL   PRIMARY KEY,
-    venue_id    BIGINT      NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+    show_id     BIGINT      NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
     seat_number VARCHAR(20) NOT NULL,
+    status      VARCHAR(50) NOT NULL DEFAULT 'AVAILABLE',
     
-    -- Prevents duplicate seat identifiers within the same venue
-    CONSTRAINT uq_venue_seat UNIQUE (venue_id, seat_number)
+    -- Prevents duplicate seat identifiers within the same show
+    CONSTRAINT uq_show_seat UNIQUE (show_id, seat_number)
 );
 
 -- ── bookings (Dynamic State & Source of Truth) ────────────────────────────────

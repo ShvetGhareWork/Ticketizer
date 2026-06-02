@@ -36,6 +36,7 @@ export interface ConsoleLogEntry {
 
 interface AppContextType {
   authToken: string | null;
+  isVerified: boolean;
   currentShowId: number;
   currentEventId: string | null;
   seats: Record<string, Seat>;
@@ -46,7 +47,9 @@ interface AppContextType {
   isRefreshing: boolean;
   login: (email: string, password?: string) => Promise<boolean>;
   loginWithGoogle: (googleCredentialToken: string) => Promise<boolean>;
-  register: (fullName: string, email: string, password?: string) => Promise<boolean>;
+  register: (fullName: string, email: string, password?: string, phoneNumber?: string, verificationMethod?: string) => Promise<boolean>;
+  verifyOtp: (otp: string) => Promise<boolean>;
+  resendOtp: (method?: string) => Promise<boolean>;
   logout: () => void;
   setCurrentShowId: (showId: number, eventId?: string) => void;
   syncLiveInventory: (isInitial?: boolean) => Promise<void>;
@@ -63,6 +66,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isVerified, setIsVerified] = useState<boolean>(true);
   const [currentShowId, setCurrentShowIdState] = useState<number>(1);
   const [currentEventId, setCurrentEventIdState] = useState<string | null>(null);
   const [seats, setSeats] = useState<Record<string, Seat>>({});
@@ -92,6 +96,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Load token and activeAllocation from storage on mount (for persistent dev ease)
   useEffect(() => {
     const savedToken = localStorage.getItem('authToken');
+    const savedVerified = localStorage.getItem('isVerified');
+    if (savedVerified) {
+      setIsVerified(savedVerified === 'true');
+    }
     if (savedToken) {
       setAuthToken(savedToken);
       authTokenRef.current = savedToken; // Update ref immediately to prevent race conditions during initial sync
@@ -155,8 +163,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const token = data.accessToken;
         setAuthToken(token);
         localStorage.setItem('authToken', token);
+        
+        const isUserVerified = data.isVerified ?? true;
+        setIsVerified(isUserVerified);
+        localStorage.setItem('isVerified', isUserVerified ? 'true' : 'false');
+        
+        localStorage.setItem('userEmail', data.email || email);
+        localStorage.setItem('userName', data.fullName || '');
+        localStorage.setItem('userPhone', data.phoneNumber || '');
+        localStorage.setItem('verificationMethod', data.verificationMethod || 'EMAIL');
+        
         setConnectionStatus('ONLINE');
-        addLog('SUCCESS', 'AUTH RESOLVED: Access token captured. Gateway ONLINE.');
+        if (!isUserVerified) {
+          addLog('SYSTEM', 'AUTH WARNING: Account is unverified. OTP verification required.');
+        } else {
+          addLog('SUCCESS', 'AUTH RESOLVED: Access token captured. Gateway ONLINE.');
+        }
         return true;
       } else {
         addLog('ERROR', `AUTH REFUSED: Relational gateway returned status ${response.status}. Credentials rejected.`);
@@ -167,6 +189,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const simulatedToken = `simulated-token-${btoa(email)}`;
       setAuthToken(simulatedToken);
       localStorage.setItem('authToken', simulatedToken);
+      setIsVerified(true);
+      localStorage.setItem('isVerified', 'true');
       setConnectionStatus('SIMULATED');
       addLog('SUCCESS', 'AUTH RESOLVED (SIMULATED): Handshake succeeded in offline sandbox mode.');
       return true;
@@ -192,35 +216,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     
     try {
-      // Try logging in first to avoid triggering a 409 Conflict console error for returning users
-      let loginRes = await fetch('http://localhost:8080/api/v1/auth/login', {
+      const response = await fetch('http://localhost:8080/api/v1/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: 'google-oauth-mock' }),
+        body: JSON.stringify({ email, fullName }),
       });
 
-      // If user doesn't exist yet, attempt registration
-      if (!loginRes.ok) {
-        const regRes = await fetch('http://localhost:8080/api/v1/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fullName, email, password: 'google-oauth-mock' }),
-        });
-
-        if (regRes.ok || regRes.status === 409) {
-          loginRes = await fetch('http://localhost:8080/api/v1/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password: 'google-oauth-mock' }),
-          });
-        }
-      }
-
-      if (loginRes.ok) {
-        const data = await loginRes.json();
+      if (response.ok) {
+        const data = await response.json();
         const token = data.accessToken;
         setAuthToken(token);
         localStorage.setItem('authToken', token);
+        setIsVerified(true);
+        localStorage.setItem('isVerified', 'true');
         setConnectionStatus('ONLINE');
         addLog('SUCCESS', 'AUTH RESOLVED (GOOGLE): Google account synced and stored in relational database.');
         return true;
@@ -230,23 +238,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const simulatedToken = `google-token-${btoa(email)}`;
       setAuthToken(simulatedToken);
       localStorage.setItem('authToken', simulatedToken);
+      setIsVerified(true);
+      localStorage.setItem('isVerified', 'true');
       setConnectionStatus('SIMULATED');
       addLog('SUCCESS', `AUTH RESOLVED (GOOGLE): Secure token received for ${email}. (SIMULATED mode)`);
       return true;
     }
   };
 
-  const register = async (fullName: string, email: string, password?: string): Promise<boolean> => {
+  const register = async (
+    fullName: string, 
+    email: string, 
+    password?: string, 
+    phoneNumber?: string, 
+    verificationMethod?: string
+  ): Promise<boolean> => {
     addLog('SYSTEM', `REGISTER REQUEST: Registering account for ${fullName} (${email})...`);
     try {
       const response = await fetch('http://localhost:8080/api/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName, email, password }),
+        body: JSON.stringify({ fullName, email, password, phoneNumber, verificationMethod }),
       });
       if (response.ok) {
-        addLog('SUCCESS', 'REGISTRATION SUCCESS: Account provisioned. Logging in...');
-        return await login(email, password);
+        const data = await response.json();
+        const token = data.accessToken;
+        setAuthToken(token);
+        localStorage.setItem('authToken', token);
+        
+        setIsVerified(false);
+        localStorage.setItem('isVerified', 'false');
+        
+        localStorage.setItem('userEmail', data.email || email);
+        localStorage.setItem('userName', data.fullName || fullName);
+        localStorage.setItem('userPhone', data.phoneNumber || phoneNumber || '');
+        localStorage.setItem('verificationMethod', data.verificationMethod || verificationMethod || 'EMAIL');
+        
+        setConnectionStatus('ONLINE');
+        addLog('SUCCESS', 'REGISTRATION SUCCESS: Account provisioned. OTP verification required.');
+        return true;
       } else {
         addLog('ERROR', `REGISTRATION REFUSED: Relational gateway returned status ${response.status}. Account exists or validation failed.`);
         return false;
@@ -256,8 +286,69 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const simulatedToken = `simulated-token-${btoa(email)}`;
       setAuthToken(simulatedToken);
       localStorage.setItem('authToken', simulatedToken);
+      setIsVerified(true);
+      localStorage.setItem('isVerified', 'true');
+      localStorage.setItem('userEmail', email);
+      localStorage.setItem('userName', fullName);
+      localStorage.setItem('userPhone', phoneNumber || '');
+      localStorage.setItem('verificationMethod', 'EMAIL');
       setConnectionStatus('SIMULATED');
       addLog('SUCCESS', 'AUTH RESOLVED: Sandbox user registered and logged in.');
+      return true;
+    }
+  };
+
+  const verifyOtp = async (otp: string): Promise<boolean> => {
+    const email = localStorage.getItem('userEmail');
+    if (!email) {
+      addLog('ERROR', 'OTP VERIFY FAILED: No active user session email resolved.');
+      return false;
+    }
+    addLog('SYSTEM', `OTP SUBMITTING: Dispatching verification code ${otp} for ${email}...`);
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp }),
+      });
+
+      if (response.ok) {
+        setIsVerified(true);
+        localStorage.setItem('isVerified', 'true');
+        addLog('SUCCESS', 'OTP SUCCESS: Code validated! Account has been unlocked.');
+        return true;
+      } else {
+        const data = await response.json();
+        addLog('ERROR', `OTP REFUSED: verification failed: ${data.error || 'Invalid code'}`);
+        return false;
+      }
+    } catch {
+      addLog('SUCCESS', 'OTP SUCCESS (SIMULATED): Simulated validation. Account unlocked.');
+      setIsVerified(true);
+      localStorage.setItem('isVerified', 'true');
+      return true;
+    }
+  };
+
+  const resendOtp = async (method?: string): Promise<boolean> => {
+    const email = localStorage.getItem('userEmail');
+    if (!email) return false;
+    const activeMethod = method || localStorage.getItem('verificationMethod') || 'EMAIL';
+    addLog('SYSTEM', `OTP RESENDING: Requesting new code via ${activeMethod}...`);
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/auth/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, verificationMethod: activeMethod }),
+      });
+      if (response.ok) {
+        localStorage.setItem('verificationMethod', activeMethod);
+        addLog('SUCCESS', `OTP RESENT: A fresh verification code has been dispatched via ${activeMethod}.`);
+        return true;
+      }
+      return false;
+    } catch {
+      addLog('SUCCESS', `OTP RESENT (SIMULATED): A simulated verification code was sent via ${activeMethod}.`);
       return true;
     }
   };
@@ -858,6 +949,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         authToken,
+        isVerified,
         currentShowId,
         currentEventId,
         seats,
@@ -869,6 +961,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         login,
         loginWithGoogle,
         register,
+        verifyOtp,
+        resendOtp,
         logout,
         setCurrentShowId,
         syncLiveInventory,

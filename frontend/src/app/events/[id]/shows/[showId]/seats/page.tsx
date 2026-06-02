@@ -38,6 +38,9 @@ export default function SeatSelectionPage() {
     currentShowId,
     currentEventId,
     setCurrentShowId,
+    isVerified,
+    verifyOtp,
+    resendOtp,
   } = useApp();
 
   const [eventMeta, setEventMeta] = useState<{
@@ -47,6 +50,12 @@ export default function SeatSelectionPage() {
   } | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  // OTP Verification States
+  const [otpCode, setOtpCode] = useState("");
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [activeMethod, setActiveMethod] = useState<string>("EMAIL");
+
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -55,11 +64,15 @@ export default function SeatSelectionPage() {
         if (stored) {
           setEventMeta(JSON.parse(stored));
         }
+        const savedMethod = localStorage.getItem("verificationMethod");
+        if (savedMethod) {
+          setActiveMethod(savedMethod);
+        }
       } catch (e) {
-        console.error("Failed to parse currentEvent", e);
+        console.error("Failed to parse currentEvent or verificationMethod", e);
       }
     }
-  }, []);
+  }, [authToken, isVerified]);
 
   const seatList = Object.values(seats);
 
@@ -211,6 +224,37 @@ export default function SeatSelectionPage() {
       .padStart(2, "0");
     const s = (seconds % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode || otpCode.length !== 6) {
+      setVerificationError("Please enter a valid 6-digit code.");
+      return;
+    }
+    setVerificationError(null);
+    const success = await verifyOtp(otpCode);
+    if (!success) {
+      setVerificationError("Incorrect or expired OTP. Please try again.");
+    } else {
+      setOtpCode("");
+    }
+  };
+
+  const handleResend = async (methodOverride?: string) => {
+    setResending(true);
+    setVerificationError(null);
+    const targetMethod = methodOverride || activeMethod;
+    const success = await resendOtp(targetMethod);
+    setResending(false);
+    if (success) {
+      if (methodOverride) {
+        setActiveMethod(methodOverride);
+      }
+      alert(`A new 6-digit verification code has been dispatched via ${targetMethod}.`);
+    } else {
+      setVerificationError("Failed to resend verification code.");
+    }
   };
 
   const handleSeatClick = async (seatLabel: string) => {
@@ -683,6 +727,85 @@ export default function SeatSelectionPage() {
           >
             Proceed to Checkout <ArrowRight size={16} />
           </button>
+        </div>
+      )}
+
+      {/* OTP VERIFICATION MODAL OVERLAY */}
+      {authToken && !isVerified && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-300">
+          <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-w-md w-full text-center">
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-100">
+              <ShieldCheck size={24} />
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-2 tracking-tight">
+              VERIFY YOUR ACCOUNT
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-500 mb-6 leading-relaxed font-medium">
+              We sent a 6-digit verification code to lock inventory:
+              <br />
+              <span className="font-bold text-gray-800 break-all">
+                {typeof window !== 'undefined' ? (activeMethod === "SMS" ? `+91 ${localStorage.getItem('userPhone')}` : localStorage.getItem('userEmail')) : ''}
+              </span>
+            </p>
+
+            {verificationError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-bold tracking-wide uppercase">
+                {verificationError}
+              </div>
+            )}
+
+            <form onSubmit={handleOtpSubmit} className="space-y-4">
+              <input
+                maxLength={6}
+                type="text"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="0 0 0 0 0 0"
+                className="text-2xl tracking-[12px] font-black text-center w-full py-3.5 border border-gray-300 rounded-lg bg-gray-50 outline-none focus:ring-2 focus:ring-blue-600 transition-all placeholder:text-gray-300 pl-[12px]"
+                required
+              />
+
+              <button
+                type="submit"
+                className="w-full bg-[#0D6EFD] text-white py-3.5 rounded-lg font-bold text-sm tracking-wide hover:bg-blue-700 transition-colors shadow-md min-h-[48px] uppercase"
+              >
+                Verify OTP
+              </button>
+
+              <div className="flex bg-[#F0F4F8] p-1 rounded-lg mt-4">
+                <button
+                  type="button"
+                  onClick={() => handleResend("EMAIL")}
+                  disabled={resending}
+                  className="flex-1 py-2 rounded text-[10px] font-extrabold uppercase tracking-wider transition-all hover:bg-white/40 text-gray-600 disabled:opacity-50"
+                >
+                  Resend Email
+                </button>
+                {typeof window !== 'undefined' && localStorage.getItem('userPhone') && (
+                  <button
+                    type="button"
+                    onClick={() => handleResend("SMS")}
+                    disabled={resending}
+                    className="flex-1 py-2 rounded text-[10px] font-extrabold uppercase tracking-wider transition-all hover:bg-white/40 text-gray-600 disabled:opacity-50"
+                  >
+                    Resend SMS
+                  </button>
+                )}
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem("authToken");
+                  localStorage.removeItem("isVerified");
+                  window.location.reload();
+                }}
+                className="text-[10px] font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest block mx-auto mt-2"
+              >
+                Sign out & cancel
+              </button>
+            </form>
+          </div>
         </div>
       )}
 

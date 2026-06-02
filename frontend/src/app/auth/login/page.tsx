@@ -34,7 +34,12 @@ export default function LoginPage() {
     try {
       const success = await login(email, password);
       if (success) {
-        router.push("/events");
+        const isVerifiedStr = localStorage.getItem('isVerified');
+        if (isVerifiedStr === 'false') {
+          router.push("/auth/verify");
+        } else {
+          router.push("/events");
+        }
       } else {
         setError("Invalid credentials. Please verify and try again.");
       }

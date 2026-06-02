@@ -19,6 +19,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [verificationMethod, setVerificationMethod] = useState<"EMAIL" | "SMS">("EMAIL");
   const [terms, setTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -36,6 +38,10 @@ export default function SignupPage() {
       setError("Passwords do not match.");
       return;
     }
+    if (verificationMethod === "SMS" && !phoneNumber.trim()) {
+      setError("Phone number is required for SMS verification.");
+      return;
+    }
     if (!terms) {
       setError("You must agree to the Terms of Service.");
       return;
@@ -44,9 +50,9 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
     try {
-      const success = await register(fullName, email, password);
+      const success = await register(fullName, email, password, phoneNumber, verificationMethod);
       if (success) {
-        router.push("/events");
+        router.push("/auth/verify");
       } else {
         setError("Registration failed. Please check your credentials.");
       }
@@ -210,6 +216,65 @@ export default function SignupPage() {
                 required
                 disabled={loading}
               />
+            </div>
+
+            {/* Phone Number Field */}
+            <div>
+              <label
+                className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5"
+                htmlFor="phoneNumber"
+              >
+                Phone Number (for Mobile OTP)
+              </label>
+              <div className="flex border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-blue-600 focus-within:border-transparent transition-all overflow-hidden">
+                <div className="bg-gray-50 px-3 py-3 border-r border-gray-300 flex items-center justify-center text-sm font-bold text-gray-600">
+                  +91
+                </div>
+                <input
+                  id="phoneNumber"
+                  type="tel"
+                  placeholder="9876543210"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  className="w-full px-4 py-3 outline-none text-sm font-medium placeholder-gray-400"
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            {/* Verification Channel Toggle */}
+            <div>
+              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">
+                OTP Verification Channel
+              </label>
+              <div className="flex bg-[#F0F4F8] p-1 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setVerificationMethod("EMAIL")}
+                  className={`flex-1 py-2.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                    verificationMethod === "EMAIL"
+                      ? "bg-white shadow-sm text-blue-600"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  Email OTP
+                </button>
+                <button
+                  type="button"
+                  disabled={!phoneNumber.trim()}
+                  onClick={() => setVerificationMethod("SMS")}
+                  className={`flex-1 py-2.5 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+                    verificationMethod === "SMS"
+                      ? "bg-white shadow-sm text-blue-600"
+                      : "text-gray-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                  }`}
+                >
+                  SMS OTP
+                </button>
+              </div>
+              {!phoneNumber.trim() && (
+                <p className="text-[10px] text-gray-400 mt-1">Provide a mobile number to unlock SMS OTP.</p>
+              )}
             </div>
 
             {/* Password Grid (Side-by-Side on Desktop, Stacked on Mobile) */}

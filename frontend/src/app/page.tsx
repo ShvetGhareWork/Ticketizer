@@ -60,7 +60,7 @@ export default function TicketizerLanding() {
 
         const uniqueRaw = Array.from(uniqueEventsMap.values()).slice(0, 9);
 
-        const mapped = uniqueRaw.map((e, index) => {
+        let mapped = uniqueRaw.map((e, index) => {
           const image =
             e.images?.reduce((prev: any, curr: any) =>
               prev.width > curr.width ? prev : curr,
@@ -105,6 +105,72 @@ export default function TicketizerLanding() {
             venue: `${venue}, ${city}`,
           };
         });
+
+        // Safe Fallback curated stunning local events if Ticketmaster API blocked or limited
+        if (mapped.length === 0) {
+          mapped = [
+            {
+              id: "1",
+              tag: "LIVE SALE",
+              tagColor: "bg-white text-gray-900",
+              image: "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=800",
+              date: "JUN 1, 2026 — AHMEDABAD",
+              title: "Inception (Re-Release) - Main Pitch Area",
+              price: "From £150.00",
+              venue: "Narendra Modi Stadium, Ahmedabad",
+            },
+            {
+              id: "2",
+              tag: "FAST FILLING",
+              tagColor: "bg-blue-600 text-white",
+              image: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&q=80&w=800",
+              date: "JUN 1, 2026 — LAS VEGAS",
+              title: "Inception (Re-Release) - Immersive Dome",
+              price: "From £250.00",
+              venue: "Las Vegas Sphere, Las Vegas",
+            },
+            {
+              id: "3",
+              tag: "EXCLUSIVE",
+              tagColor: "bg-amber-500 text-gray-900",
+              image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&q=80&w=800",
+              date: "JUN 2, 2026 — BANGALORE",
+              title: "Inception (Re-Release) - Intimate Lounge",
+              price: "From £80.00",
+              venue: "Comedy Club Theater, Bangalore",
+            },
+            {
+              id: "4",
+              tag: "LIVE SALE",
+              tagColor: "bg-white text-gray-900",
+              image: "https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&q=80&w=800",
+              date: "OCT 12, 2026 — GOA",
+              title: "Sunburn Festival Goa 2026",
+              price: "From £120.00",
+              venue: "Vagator Beach, Goa",
+            },
+            {
+              id: "5",
+              tag: "FAST FILLING",
+              tagColor: "bg-blue-600 text-white",
+              image: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&q=80&w=800",
+              date: "DEC 24, 2026 — MUMBAI",
+              title: "Diljit Dosanjh: Dil-Luminati Tour",
+              price: "From £90.00",
+              venue: "DY Patil Stadium, Mumbai",
+            },
+            {
+              id: "6",
+              tag: "EXCLUSIVE",
+              tagColor: "bg-amber-500 text-gray-900",
+              image: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&q=80&w=800",
+              date: "NOV 18, 2026 — MUMBAI",
+              title: "Coldplay: Music of the Spheres Tour",
+              price: "From £180.00",
+              venue: "Wankhede Stadium, Mumbai",
+            }
+          ];
+        }
 
         if (mapped.length > 0) {
           setEvents(mapped);

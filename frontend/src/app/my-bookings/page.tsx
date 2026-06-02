@@ -16,235 +16,71 @@ const jakarta = Plus_Jakarta_Sans({
 
 export default function MyBookingsPage() {
   const router = useRouter();
-  const [customBookings, setCustomBookings] = useState<any[]>([]);
-
-  const isRealBooking = (id: string) => /^[0-9a-f-,%]+$/i.test(id);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const saved = localStorage.getItem("tkz_bookings");
-    if (saved) {
-      const parsedBookings = JSON.parse(saved).map((b: any) => {
-        if (
-          b &&
-          (b.title === "Live Event Booking" || b.venue === "Venue TBA")
-        ) {
-          b.title = "Inception (Re-Release)";
-          b.date = "Monday, June 1, 2026 • 6:00 PM";
-          b.venue = "Narendra Modi Stadium, Ahmedabad";
-          b.status = "CONFIRMED";
-          b.image =
-            "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
-        }
-        return b;
-      });
-      setCustomBookings(parsedBookings); // Immediate load from cache for fast UX
-
-      const reloadBookings = async () => {
-        try {
-          const promises = parsedBookings.map(async (b: any) => {
-            if (!b || !b.id) return b;
-
-            if (!isRealBooking(b.id)) {
-              if (b.title === "Live Event Booking" || b.venue === "Venue TBA") {
-                b.title = "Inception (Re-Release)";
-                b.date = "Monday, June 1, 2026 • 6:00 PM";
-                b.venue = "Narendra Modi Stadium, Ahmedabad";
-                b.status = "CONFIRMED";
-                b.image =
-                  "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
-              }
-              return b;
-            }
-
+    const fetchMyBookings = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch("http://localhost:8080/api/v1/bookings/my", {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("authToken") || ""}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const mapped = data.map((b: any) => {
+            let dateStr = b.startTime;
             try {
-              const refs = b.id.split(",");
-              const fetchPromises = refs.map((ref: string) =>
-                fetch(`http://localhost:8080/api/v1/bookings/${ref}`, {
-                  headers: {
-                    Authorization: `Bearer ${localStorage.getItem("authToken") || ""}`,
-                  },
-                })
-                  .then(async (res) => {
-                    if (res.ok) {
-                      const data = await res.json();
-                      if (data && data.eventTitle) return data;
-                    }
-                    return null;
-                  })
-                  .catch(() => null),
-              );
-
-              const results = await Promise.all(fetchPromises);
-              const validResults = results.filter(Boolean);
-
-              if (validResults.length > 0) {
-                const firstValid = validResults[0];
-                const allConfirmed = validResults.every(
-                  (data) => data.status === "CONFIRMED",
-                );
-                const anyCancelled = validResults.some(
-                  (data) =>
-                    data.status === "CANCELLED" || data.status === "EXPIRED",
-                );
-                const status = allConfirmed
-                  ? "CONFIRMED"
-                  : anyCancelled
-                    ? "CANCELLED"
-                    : "PENDING";
-
-                const totalPrice = validResults.reduce(
-                  (sum, r) => sum + (r.price || 150.0),
-                  0,
-                );
-                const seatNumbers = validResults
-                  .map((r) => r.seatNumber)
-                  .join(", ");
-
-                let dateStr = firstValid.startTime || b.date;
-                if (firstValid.startTime) {
-                  try {
-                    const d = new Date(firstValid.startTime);
-                    if (!isNaN(d.getTime())) {
-                      dateStr =
-                        d.toLocaleDateString("en-US", {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        }) +
-                        " • " +
-                        d.toLocaleTimeString("en-US", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                          hour12: true,
-                        });
-                    }
-                  } catch (e) {
-                    /* ignore */
-                  }
-                }
-
-                let finalImage = firstValid.imageUrl || b.image;
-                if (
-                  !finalImage ||
-                  finalImage.includes("photo-1540747913346-19e32dc3e97e")
-                ) {
-                  const titleLower = (
-                    firstValid.eventTitle ||
-                    b.title ||
-                    ""
-                  ).toLowerCase();
-                  if (titleLower.includes("imagine dragons")) {
-                    finalImage =
-                      "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&q=80&w=400";
-                  } else if (titleLower.includes("eagles")) {
-                    finalImage =
-                      "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&q=80&w=400";
-                  } else if (
-                    titleLower.includes("miracles") ||
-                    titleLower.includes("spinners")
-                  ) {
-                    finalImage =
-                      "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&q=80&w=400";
-                  } else if (
-                    firstValid.venue?.toLowerCase().includes("sphere")
-                  ) {
-                    finalImage =
-                      "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=400";
-                  } else if (
-                    firstValid.venue?.toLowerCase().includes("theater") ||
-                    firstValid.venue?.toLowerCase().includes("comedy")
-                  ) {
-                    finalImage =
-                      "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&q=80&w=400";
-                  } else {
-                    finalImage =
-                      "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=400";
-                  }
-                }
-
-                return {
-                  id: b.id,
-                  title: firstValid.eventTitle || b.title,
-                  date: dateStr,
-                  venue: firstValid.venue || b.venue,
-                  seats: `${seatNumbers} · Standard`,
-                  price: `$${(totalPrice * 1.05).toFixed(2)}`,
-                  status: status,
-                  image: finalImage,
-                };
+              const d = new Date(b.startTime);
+              if (!isNaN(d.getTime())) {
+                dateStr =
+                  d.toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  }) +
+                  " • " +
+                  d.toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  });
               }
-            } catch (err) {
-              console.warn(
-                `Failed to reload booking details for ${b.id}:`,
-                err,
-              );
+            } catch (e) {
+              /* ignore */
             }
 
-            if (
-              b &&
-              (b.title === "Live Event Booking" || b.venue === "Venue TBA")
-            ) {
-              b.title = "Inception (Re-Release)";
-              b.date = "Monday, June 1, 2026 • 6:00 PM";
-              b.venue = "Narendra Modi Stadium, Ahmedabad";
-              b.status = "CONFIRMED";
-              b.image =
+            let finalImage = b.imageUrl;
+            if (!finalImage || finalImage.trim() === "") {
+              finalImage =
                 "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
             }
-            return b;
+
+            return {
+              id: b.bookingReference,
+              title: b.eventTitle,
+              date: dateStr,
+              venue: b.venue,
+              seats: `${b.seatNumber} · ${b.hallName || "StandardSeating"}`,
+              price: `£${(b.price || 150.0).toFixed(2)}`,
+              status: b.status,
+              image: finalImage,
+            };
           });
-
-          const enriched = await Promise.all(promises);
-          setCustomBookings(enriched);
-          localStorage.setItem("tkz_bookings", JSON.stringify(enriched));
-        } catch (e) {
-          console.error("Failed to enrich bookings", e);
+          setBookings(mapped);
         }
-      };
+      } catch (err) {
+        console.error("Failed to load user bookings from backend:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-      reloadBookings();
-    }
+    fetchMyBookings();
   }, []);
-
-  // Mock data matching the design
-  const mockBookings = [
-    {
-      id: "TKZ-2026-00147",
-      title: "IPL Final 2026",
-      date: "Sunday, May 24 • 19:30 IST",
-      venue: "Narendra Modi Stadium, Ahmedabad",
-      seats: "A-12, A-13 · Premium",
-      price: "₹10,500",
-      status: "CONFIRMED",
-      image:
-        "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400",
-    },
-    {
-      id: "TKZ-2026-08922",
-      title: "Coldplay India 2026",
-      date: "Friday, Nov 12 • 20:00 IST",
-      venue: "DY Patil Stadium, Mumbai",
-      seats: "GA-Floor-256",
-      price: "₹6,500",
-      status: "CONFIRMED",
-      image:
-        "https://images.unsplash.com/photo-1540039155732-684736dd6d54?auto=format&fit=crop&q=80&w=400",
-    },
-    {
-      id: "TKZ-2026-00344",
-      title: "Mumbai Comedy Night",
-      date: "Wednesday, June 10 • 21:00 IST",
-      venue: "The Habitat, Mumbai",
-      seats: "Row C, Seat 15",
-      price: "₹1,200",
-      status: "CONFIRMED",
-      image:
-        "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&q=80&w=400",
-    },
-  ];
-
-  const bookings = [...customBookings, ...mockBookings];
 
   return (
     <div
@@ -355,13 +191,7 @@ export default function MyBookingsPage() {
 
                 <button
                   onClick={() => {
-                    if (isRealBooking(booking.id)) {
-                      router.push(`/booking/${booking.id}/confirmation`);
-                    } else {
-                      alert(
-                        `Booking Reference: ${booking.id}\nStatus: ${booking.status}`,
-                      );
-                    }
+                    router.push(`/booking/${booking.id}/confirmation`);
                   }}
                   className="text-[10px] sm:text-[11px] font-bold tracking-widest text-blue-600 uppercase flex items-center justify-center gap-1.5 hover:text-blue-800 transition-colors group-hover:translate-x-1 duration-300 min-h-[44px] md:min-h-0 px-2 sm:px-0"
                 >
