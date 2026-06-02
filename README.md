@@ -1,141 +1,338 @@
-# 🎫 TICKETIZER // TRANSACTIONAL CONGESTION CORE GATEWAY
+<div align="center">
 
-A production-grade, distributed ticket allocation engine engineered to handle extreme concurrency spikes (e.g., viral ticket drops) without data drift, inventory overselling, or database deadlocks.
+<h1>Ticketizer</h1>
 
-The architecture decouples immediate, low-latency reservation state management from asynchronous relational storage convergence using a hybrid **memory/event-driven design**.
+<p><em>High-concurrency distributed ticket booking engine — built to handle surge traffic without overselling a single seat.</em></p>
+
+[![Java](https://img.shields.io/badge/Java_21-ED8B00?style=flat-square&logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot_3.3-6DB33F?style=flat-square&logo=spring&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Next.js](https://img.shields.io/badge/Next.js_15-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![Redis](https://img.shields.io/badge/Redis_7-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io)
+[![Kafka](https://img.shields.io/badge/Apache_Kafka-231F20?style=flat-square&logo=apachekafka&logoColor=white)](https://kafka.apache.org)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
+
+**[Live Demo](https://ticketizer-five.vercel.app)** · **[Report Bug](https://github.com/ShvetGhareWork/Ticketizer/issues)** · **[Request Feature](https://github.com/ShvetGhareWork/Ticketizer/issues)**
+
+</div>
 
 ---
 
-## 🚀 Architectural Architecture Overview
+## The Problem
 
-```mermaid
-graph TD
-    Client[Web Browser] -->|HTTP / TLS| Vercel[Vercel Frontend edge CDN]
-    Client -->|API Requests| Spring[Spring Boot Core Gateway App]
-    
-    subgraph Spring Boot High-Concurrency Engine
-        Spring -->|1. Atomic Lua Script / <5ms| Redis[(Redis Distributed Caching)]
-        Spring -->|2. Asynchronous Stream| Kafka[Apache Kafka Event Bus]
-    end
-    
-    subgraph Persistent Storage
-        Kafka -->|3. Idempotent Consumer Commit| Postgres[(RDS PostgreSQL Source of Truth)]
-    end
-    
-    subgraph External Settlers
-        Spring -->|Webhooks & Payment Gateway| Razorpay[Razorpay Payments]
-        Spring -->|Notification Gateway| SMTP[Gmail TLS SMTP]
-    end
+Most ticket booking systems collapse the moment a popular show goes live. Every user hitting "Book" at the same time causes:
+
+- **Database deadlocks** from concurrent `SELECT FOR UPDATE` on the same seat rows
+- **Overselling** when two transactions read "1 seat available" simultaneously and both commit
+- **Cascade failures** as connection pools exhaust under spike traffic
+
+Ticketizer solves this by shifting the reservation bottleneck from the database to Redis — where atomic Lua scripts make seat locks a single-threaded, sub-10ms operation — and draining writes asynchronously through Kafka.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CLIENT BROWSER                           │
+│                   Next.js 15 · Vercel Edge                      │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ HTTPS
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   SPRING BOOT 3.3 (Java 21)                     │
+│                                                                 │
+│   POST /bookings                                                │
+│        │                                                        │
+│        ├─① Lua Script ──────────► REDIS 7                      │
+│        │   (atomic, <10ms)        show:{id}:available_seats     │
+│        │   SISMEMBER → SREM       show:{id}:locked_seats        │
+│        │   → HSET → return 1      TTL: 600s per lock            │
+│        │                                                        │
+│        ├─② Kafka Produce ─────── ► KAFKA                       │
+│        │   (idempotent)            topic: ticket-reservations   │
+│        │                           enable.idempotence=true      │
+│        │                                                        │
+│        └─③ Return 202 PENDING ──► Client (instant)             │
+│                                                                 │
+│   @KafkaListener                                                │
+│        │                                                        │
+│        └─④ Consume at own pace ─► POSTGRESQL 16                │
+│            (MANUAL_IMMEDIATE ACK)  bookings, seats, events      │
+│            ON CONFLICT DO NOTHING  Flyway-managed schema        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### ⚡ Transactional Flow Sequence (Seat Booking)
+### Request lifecycle — booking a seat
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor Fan as User / Browser
-    participant API as Spring Core API
-    participant Cache as Redis Set/Hash (Lua)
-    participant Bus as Kafka Cluster (bookings)
-    participant DB as Postgres (Durable DB)
+    actor User
+    participant API as Spring Boot API
+    participant Redis
+    participant Kafka
+    participant DB as PostgreSQL
 
-    Fan->>API: Select Seat Coordinate (e.g. S-44) & Lock
-    API->>Cache: Execute Atomic Lua Lock Check
-    alt Seat is already locked
-        Cache-->>API: Lock Rejected (Fail-Fast)
-        API-->>Fan: 409 Conflict (Locked by another user)
-    else Seat is free
-        Cache->>Cache: Set TTL Lease (300s)
-        Cache-->>API: Lock Confirmed
-    end
-    API->>Bus: Stream BookingCreated Event (Queue)
-    API-->>Fan: 201 Created (Seat Locked, Proceed to Checkout)
+    User->>API: POST /bookings {showId, seatIds, userId}
+    API->>Redis: EVALSHA lua_script {available_set, locked_set, seatId, userId}
     
-    Note over Bus, DB: Async Processing Pipeline
-    Bus->>DB: Consume Event & Write PENDING Booking Record
+    alt Seat already locked
+        Redis-->>API: return 0
+        API-->>User: 409 Conflict — seat unavailable
+    else Seat is free
+        Redis->>Redis: SREM available · HSET locked · TTL 600s
+        Redis-->>API: return 1
+        API->>Kafka: produce BookingEvent {bookingId, userId, showId, seatIds}
+        API-->>User: 202 Accepted — status: PENDING
+    end
+
+    Kafka->>DB: consume → INSERT booking ON CONFLICT DO NOTHING
+    Kafka->>DB: UPDATE seats SET status = BOOKED WHERE id IN (...)
 ```
 
 ---
 
-## ⚡ Core Technical Specifications
+## Key Design Decisions
 
-- **Atomic Fast-Path Inventory Locks**: Uses Redis Set/Hash operations managed via atomic **Lua Scripts** to validate and secure seat locks in `<10ms`, dropping excess surge traffic before it hits the relational database.
-- **Asynchronous Ingestion Bus**: Leverages **Apache Kafka** to stream secured memory reservations into an idempotent transactional consumer lane, smoothing massive database ingestion spikes.
-- **Durable Relational Baseline**: Integrates **PostgreSQL** for final state persistence, hardened with database-level constraints (`idx_booking_user_show`) to eliminate duplicate active bookings.
-- **Fail-Fast Error Boundaries**: Configured with a Kafka **Dead Letter Queue (DLQ)** handler that separates transient infrastructure issues from deterministic data violations without stalling log partitions.
-- **Asynchronous Janitor Loop**: Runs an optimized Spring Task Scheduler to reclaim abandoned `PENDING` booking leases, utilizing transactional database isolation and matching Redis Lua release paths.
-- **Race-Condition Hardening**: Implements **Optimistic Concurrency Locking** (`@Version`) to resolve real-time race conditions between the background Janitor loop and incoming webhook checkout completions.
+| Challenge | Naive Approach | Ticketizer's Approach |
+|---|---|---|
+| Concurrent seat requests | `SELECT FOR UPDATE` on seats table | Atomic Redis Lua script — single-threaded, no DB touch |
+| Duplicate messages on retry | At-most-once delivery | `enable.idempotence=true` + `INSERT ... ON CONFLICT DO NOTHING` |
+| Connection pool exhaustion | Direct DB writes on every request | Kafka consumer drains at a controlled pace |
+| Expired seat holds | Polling loop | Redis TTL + Keyspace Notifications (`notify-keyspace-events Ex`) |
+| Race between payment & expiry | Application-level check | Optimistic locking (`@Version`) on Booking entity |
+| Poison-pill messages | Block the partition | Dead Letter Queue (`ticket-reservations-dlq`) + `ErrorHandler` |
 
 ---
 
-## 🛠️ Local Development Setup
+## Tech Stack
 
-Follow these steps to run the complete stack locally in under 3 minutes.
+**Backend**
+- Java 21 (virtual threads ready), Spring Boot 3.3
+- Spring Data JPA + Hibernate 6, Flyway migrations
+- Spring Data Redis (`StringRedisTemplate`, `ReactiveRedisTemplate`)
+- Spring Kafka — idempotent producer, manual ACK consumer
+- Redisson — distributed locks for payment critical sections
+- Spring Security + JWT (stateless auth)
+- Razorpay SDK — payment gateway integration
+- Micrometer + Prometheus — metrics exposure
+- Zipkin / OpenTelemetry — distributed tracing
+
+**Frontend**
+- Next.js 15 (App Router), TypeScript
+- Tailwind CSS, Framer Motion
+- Zustand (seat selection state), SWR (data fetching)
+- `qrcode.react` — inline QR ticket generation
+
+**Infrastructure**
+- PostgreSQL 16 — source of truth
+- Redis 7 — inventory layer + distributed locks
+- Apache Kafka 3.6 (Confluent) — async event bus
+- Docker Compose — full local stack in one command
+
+---
+
+## Getting Started
 
 ### Prerequisites
-- **Java 25** (OpenJDK)
-- **Node.js 18+** & **npm**
-- **Docker & Docker Compose**
 
-### 1. Launch Infrastructure Services
-Spin up the local PostgreSQL, Redis, Kafka, and Mailpit instances:
+- Docker & Docker Compose
+- Java 21+
+- Node.js 18+ and npm
+
+### 1 — Start infrastructure
+
 ```bash
 docker compose up -d
 ```
 
-### 2. Configure and Run Backend Core
-Update `src/main/resources/application.yaml` with your local credentials, then run:
+This spins up PostgreSQL, Redis (with keyspace notifications enabled), Kafka, and Zookeeper. All services have health checks — wait until `docker compose ps` shows all as `healthy` (~30s for Kafka).
+
+### 2 — Run the backend
+
 ```bash
-# Windows
-.\mvnw spring-boot:run
-
-# Linux / Mac
-./mvnw spring-boot:run
+# From the project root
+./mvnw spring-boot:run          # Linux / macOS
+.\mvnw.cmd spring-boot:run      # Windows PowerShell
 ```
-The backend API server will spin up on **`http://localhost:8080`**.
 
-### 3. Configure and Run Frontend Console
-Navigate to the frontend folder, configure variables, and launch:
+On first boot, Flyway runs all migrations in `src/main/resources/db/migration/` and the data seeder creates a sample event with 200 seats. Backend starts at `http://localhost:8080`.
+
+Verify it's healthy:
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+### 3 — Run the frontend
+
 ```bash
 cd frontend
-
-# Install Node dependencies
 npm install
-
-# Run next dev server
 npm run dev
 ```
-Open **`http://localhost:3000`** in your browser to view the high-concurrency seat booking console.
 
----
+Frontend runs at `http://localhost:3000`.
 
-## 📦 Directory Structure
+### 4 — Verify the schema
 
-```text
-├── .github/                  # CI/CD Workflows
-├── frontend/                 # Next.js 16 Web Client Application
-│   ├── src/
-│   │   ├── app/              # Portal Routes (venues, artist-directory, trending, help)
-│   │   └── components/       # Reusable components (Header, Footer, SeatMap)
-│   └── package.json
-├── src/                      # Spring Boot Java 25 Source Code
-│   ├── main/
-│   │   ├── java/
-│   │   └── resources/
-│   │       ├── db/migration/ # Flyway schema migration files
-│   │       └── application.yaml
-├── docker-compose.yml        # Local Infrastructure Manifest
-└── pom.xml                   # Maven Dependency Management
+```bash
+docker exec -it ticketflow-postgres psql -U ticketflow -d ticketflow
+```
+
+```sql
+\dt
+SELECT count(*) FROM seats WHERE status = 'AVAILABLE';
+-- Expected: 200
 ```
 
 ---
 
-## 🌐 Production Cloud Deployment ($0/mo)
+## Project Structure
 
-Ticketizer is designed to be deployed for **free** on hobby cloud tiers:
-1. **Frontend**: Deploy on [Vercel](https://vercel.com) (Hobby Tier) linked with GitHub.
-2. **Backend**: Host the dockerized Spring Boot JAR on [Render](https://render.com) (Free Tier).
-3. **Database**: Spin up a serverless PostgreSQL instance on [Neon.tech](https://neon.tech).
-4. **Cache & Kafka**: Launch free managed Redis & Kafka cluster streams via [Upstash](https://upstash.com).
+```
+Ticketizer/
+├── src/main/java/com/ticketflow/
+│   ├── domain/
+│   │   ├── entity/            # Event, Show, Seat, Booking + status enums
+│   │   └── repository/        # JPA repositories with custom queries
+│   ├── service/
+│   │   ├── InventoryService   # Redis warm-up + Lua script execution
+│   │   ├── BookingService     # Orchestrates lock → produce → return PENDING
+│   │   └── ExpirationService  # Handles Redis keyspace expired events
+│   ├── kafka/
+│   │   ├── BookingProducer    # Idempotent Kafka producer
+│   │   └── BookingConsumer    # Manual-ACK consumer → Postgres writer
+│   ├── config/                # Redis, Kafka, Security, Redisson config
+│   └── seeder/                # DataSeeder — loads test events on startup
+│
+├── src/main/resources/
+│   ├── db/migration/
+│   │   └── V1__init_schema.sql   # Tables, ENUMs, composite indexes
+│   └── application.yml
+│
+├── frontend/
+│   ├── src/app/               # Next.js App Router pages
+│   │   ├── page.tsx           # Home — featured events
+│   │   ├── events/[id]/       # Event detail + show selection
+│   │   ├── seats/[showId]/    # Interactive seat map
+│   │   ├── checkout/          # Payment form
+│   │   ├── booking/[id]/      # Confirmation + QR ticket
+│   │   └── my-bookings/       # Booking history
+│   └── src/components/
+│       ├── SeatGrid           # Live seat map (CSS grid, real-time states)
+│       ├── CountdownTimer     # TTL display with expiry callback
+│       ├── TicketCard         # Perforated ticket + QR code
+│       └── BookingStatusBadge # Status pill component
+│
+├── docker-compose.yml         # Postgres + Redis + Kafka + Zookeeper
+└── pom.xml
+```
 
-*For a full step-by-step AWS EC2 + Docker cloud setup guide, consult [aws_free_tier_deployment.md](file:///C:/Users/ghare/.gemini/antigravity/brain/5857fcea-9858-4aef-a32b-7c0976487a07/aws_free_tier_deployment.md).*
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/events` | List all events with pagination |
+| `GET` | `/api/events/{id}` | Event detail + available shows |
+| `GET` | `/api/shows/{showId}/seats` | Live seat map (polls every 5s) |
+| `POST` | `/api/bookings` | Lock seats → returns 202 PENDING |
+| `GET` | `/api/bookings/{id}` | Booking status (PENDING → CONFIRMED) |
+| `POST` | `/api/bookings/{id}/confirm` | Trigger payment confirmation flow |
+| `DELETE` | `/api/bookings/{id}` | Cancel booking + release seat lock |
+| `GET` | `/api/users/me/bookings` | Authenticated user's booking history |
+
+All endpoints require `Authorization: Bearer <jwt>` except `GET /api/events`.
+
+---
+
+## How Seat Expiry Works
+
+When a user locks a seat, two things happen simultaneously:
+
+1. The seat is moved from `show:{id}:available_seats` (Redis Set) to `show:{id}:locked_seats` (Redis Hash) with a **600-second TTL**
+2. A `lock:seat:{seatId}` key is written to Redis with the same TTL
+
+Redis is configured with `notify-keyspace-events Ex`. When the TTL fires, Spring Boot's `KeyExpirationEventMessageListener` catches it and:
+
+- Checks if the booking status is still `PENDING` (not already `CONFIRMED` by payment)
+- If `PENDING`: moves the seat back to the available set, marks the DB record as `EXPIRED`
+- If `CONFIRMED`: no-op — the payment completed in time
+
+---
+
+## Local Environment Variables
+
+Create `.env` in the project root (gitignored):
+
+```env
+# Database
+DB_URL=jdbc:postgresql://localhost:5432/ticketflow
+DB_USERNAME=ticketflow
+DB_PASSWORD=secret
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# Kafka
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+
+# JWT
+JWT_SECRET=your-256-bit-secret-here
+JWT_EXPIRY_MS=86400000
+
+# Razorpay
+RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxxxx
+RAZORPAY_KEY_SECRET=your_secret_here
+```
+
+---
+
+## Deployment
+
+| Service | Platform | Tier |
+|---------|----------|------|
+| Frontend | [Vercel](https://vercel.com) | Hobby (free) |
+| Backend | [Render](https://render.com) | Free web service |
+| PostgreSQL | [Neon](https://neon.tech) | Free serverless |
+| Redis + Kafka | [Upstash](https://upstash.com) | Free tier |
+
+Connect the Render backend's environment variables to the Neon and Upstash connection strings and set `CORS_ORIGIN` to your Vercel URL.
+
+---
+
+## Roadmap
+
+- [x] Phase 1 — PostgreSQL schema, Flyway migrations, JPA entities, Docker Compose
+- [x] Phase 2 — Redis inventory warm-up, atomic Lua seat locking
+- [x] Phase 3 — Kafka idempotent producer, PENDING response pattern
+- [x] Phase 4 — Consumer with manual ACK, DLQ, idempotent DB writes
+- [x] Phase 5 — Seat expiration via Redis TTL + Keyspace Notifications, Redisson locks
+- [x] Phase 6 — Prometheus metrics, distributed tracing, Next.js frontend
+- [x] Razorpay webhook payment confirmation
+- [x] JWT auth + user registration flow
+- [ ] JMeter load test report (target: 50k concurrent users)
+- [ ] GitHub Actions CI pipeline
+
+---
+
+## Contributing
+
+Pull requests are welcome. For major changes, open an issue first.
+
+```bash
+git checkout -b feature/your-feature
+git commit -m "feat: describe your change"
+git push origin feature/your-feature
+```
+
+---
+
+<div align="center">
+
+Built by [Shvet Ghare](https://shvet.vercel.app) ·
+
+</div>
