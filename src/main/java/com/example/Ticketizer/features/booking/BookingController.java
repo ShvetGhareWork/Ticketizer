@@ -20,6 +20,8 @@ public class BookingController {
 
     private final BookingRepository bookingRepository;
     private final JwtTokenProvider tokenProvider;
+    private final RedisReservationEngine redisEngine;
+    private final com.example.Ticketizer.features.inventory.SeatRepository seatRepository;
 
     @GetMapping("/my")
     public ResponseEntity<?> getMyBookings(@RequestHeader("Authorization") String authHeader) {
@@ -170,5 +172,65 @@ public class BookingController {
         map.put("startTime", startTime);
 
         return ResponseEntity.ok(map);
+    }
+
+    @PostMapping("/{bookingRef}/cancel")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> cancelBooking(
+            @PathVariable String bookingRef,
+            @RequestHeader("Authorization") String authHeader) {
+        
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Missing or invalid authorization header."));
+        }
+        
+        try {
+            String token = authHeader.substring(7);
+            Long userId = tokenProvider.getUserIdFromToken(token);
+            log.info("Requesting cancellation for booking Ref: {} by user ID: {}", bookingRef, userId);
+            
+            Booking booking = bookingRepository.findByBookingReference(bookingRef).orElse(null);
+            if (booking == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Booking not found."));
+            }
+            
+            if (!booking.getUserId().equals(userId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Unauthorized to cancel this booking."));
+            }
+            
+            if (booking.getStatus() == BookingStatus.CANCELLED) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Booking is already cancelled."));
+            }
+            
+            if (booking.getStatus() == BookingStatus.EXPIRED) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Booking has expired and cannot be cancelled."));
+            }
+            
+            // 1. Update booking status
+            booking.setStatus(BookingStatus.CANCELLED);
+            bookingRepository.save(booking);
+            
+            // 2. Reclaim seat in Postgres
+            var seat = booking.getSeat();
+            if (seat != null) {
+                seat.setStatus(com.example.Ticketizer.features.inventory.SeatStatus.AVAILABLE);
+                seatRepository.save(seat);
+                
+                // 3. Reclaim seat in Redis
+                if (booking.getShow() != null) {
+                    boolean evicted = redisEngine.releaseSeat(booking.getShow().getId(), seat.getId());
+                    if (evicted) {
+                        log.info("Successfully evicted seat ID {} from Redis locked cache for Show ID {}", seat.getId(), booking.getShow().getId());
+                    } else {
+                        log.warn("Relational status set to AVAILABLE, but seat ID {} was not found in Redis lock space.", seat.getId());
+                    }
+                }
+            }
+            
+            return ResponseEntity.ok(Map.of("message", "Booking cancelled successfully. Seat has been released."));
+        } catch (Exception e) {
+            log.error("Failed to cancel booking: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to cancel booking."));
+        }
     }
 }
