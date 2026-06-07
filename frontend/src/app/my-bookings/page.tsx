@@ -376,25 +376,25 @@ export default function MyBookingsPage() {
 
           <div className="flex flex-wrap justify-center gap-4 sm:gap-6 text-[10px] sm:text-xs font-semibold text-gray-600">
             <Link
-              href="#"
+              href="/help"
               className="hover:text-gray-900 transition-colors py-1"
             >
               Help
             </Link>
             <Link
-              href="#"
+              href="/contact"
               className="hover:text-gray-900 transition-colors py-1"
             >
               Contact
             </Link>
             <Link
-              href="#"
+              href="/terms"
               className="hover:text-gray-900 transition-colors py-1"
             >
               Terms
             </Link>
             <Link
-              href="#"
+              href="/privacy"
               className="hover:text-gray-900 transition-colors py-1"
             >
               Privacy

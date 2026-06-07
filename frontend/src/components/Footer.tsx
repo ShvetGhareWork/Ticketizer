@@ -123,8 +123,8 @@ export default function Footer() {
             &copy; {new Date().getFullYear()} TICKETIZER INC. ALL RIGHTS RESERVED.
           </p>
           <div className="flex gap-6 text-xs font-bold text-gray-400">
-            <Link href="#" className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
-            <Link href="#" className="hover:text-blue-600 transition-colors">Terms of Service</Link>
+            <Link href="/privacy" className="hover:text-blue-600 transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="hover:text-blue-600 transition-colors">Terms of Service</Link>
           </div>
         </div>
       </div>
