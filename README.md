@@ -16,8 +16,6 @@
 **[Live Demo](https://ticketizer-five.vercel.app)** · **[Report Bug](https://github.com/ShvetGhareWork/Ticketizer/issues)** · **[Request Feature](https://github.com/ShvetGhareWork/Ticketizer/issues)**
 
 </div>
-
----
 <video src="assets/demo.mp4" controls="controls" width="100%">
   Your browser does not support the video.
 </video>
