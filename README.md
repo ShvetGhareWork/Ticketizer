@@ -17,7 +17,7 @@
 
 </div>
 
-<video src="assets/demo.mp4" controls="controls" width="100%">
+<video src="https://github.com/ShvetGhareWork/Ticketizer/raw/master/assets/demo.mp4" controls="controls" width="100%">
   Your browser does not support the video.
 </video>
 
