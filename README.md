@@ -17,9 +17,7 @@
 
 </div>
 
-<video src="https://github.com/ShvetGhareWork/Ticketizer/raw/master/assets/demo.mp4" controls="controls" width="100%">
-  Your browser does not support the video.
-</video>
+[![Ticketizer System Demonstration](https://img.youtube.com/vi/4TIaE3U9K-Q/maxresdefault.jpg)](https://youtu.be/4TIaE3U9K-Q)
 
 ---
 
