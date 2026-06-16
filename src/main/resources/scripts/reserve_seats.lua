@@ -6,7 +6,7 @@
 local seatId = ARGV[1]
 local userId = ARGV[2]
 
--- 1. Atomic Membership Check
+-- 1. Atomic Membership Check // Check if the seat is available in the inventory pool
 local isAvailable = redis.call('SISMEMBER', KEYS[1], seatId)
 
 if isAvailable == 1 then
