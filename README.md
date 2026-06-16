@@ -34,37 +34,7 @@ Ticketizer solves this by shifting the reservation bottleneck from the database 
 ---
 
 ## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CLIENT BROWSER                           │
-│                   Next.js 15 · Vercel Edge                      │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ HTTPS
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   SPRING BOOT 3.3 (Java 21)                     │
-│                                                                 │
-│   POST /bookings                                                │
-│        │                                                        │
-│        ├─① Lua Script ──────────► REDIS 7                      │
-│        │   (atomic, <10ms)        show:{id}:available_seats     │
-│        │   SISMEMBER → SREM       show:{id}:locked_seats        │
-│        │   → HSET → return 1      TTL: 600s per lock            │
-│        │                                                        │
-│        ├─② Kafka Produce ─────── ► KAFKA                       │
-│        │   (idempotent)            topic: ticket-reservations   │
-│        │                           enable.idempotence=true      │
-│        │                                                        │
-│        └─③ Return 202 PENDING ──► Client (instant)             │
-│                                                                 │
-│   @KafkaListener                                                │
-│        │                                                        │
-│        └─④ Consume at own pace ─► POSTGRESQL 16                │
-│            (MANUAL_IMMEDIATE ACK)  bookings, seats, events      │
-│            ON CONFLICT DO NOTHING  Flyway-managed schema        │
-└─────────────────────────────────────────────────────────────────┘
-```
+<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/75f5bf66-3e2a-403f-99be-f9a1bb2500a9" />
 
 ### Request lifecycle — booking a seat
 
