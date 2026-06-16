@@ -34,6 +34,7 @@ services:
   #   2. Distributed locks via Redisson (Phase 5)
   #
   # --notify-keyspace-events Ex: enables "keyevent" notifications for expired keys.
+  # Shvet ghare
   # This is how Phase 5's expiration engine works — Redis fires an event when a
   # seat lock TTL expires and our Spring listener catches it.
   redis:
