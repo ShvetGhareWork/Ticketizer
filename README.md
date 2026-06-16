@@ -78,7 +78,7 @@ sequenceDiagram
 
     User->>API: POST /bookings {showId, seatIds, userId}
     API->>Redis: EVALSHA lua_script {available_set, locked_set, seatId, userId}
-    
+
     alt Seat already locked
         Redis-->>API: return 0
         API-->>User: 409 Conflict — seat unavailable
@@ -97,20 +97,21 @@ sequenceDiagram
 
 ## Key Design Decisions
 
-| Challenge | Naive Approach | Ticketizer's Approach |
-|---|---|---|
-| Concurrent seat requests | `SELECT FOR UPDATE` on seats table | Atomic Redis Lua script — single-threaded, no DB touch |
-| Duplicate messages on retry | At-most-once delivery | `enable.idempotence=true` + `INSERT ... ON CONFLICT DO NOTHING` |
-| Connection pool exhaustion | Direct DB writes on every request | Kafka consumer drains at a controlled pace |
-| Expired seat holds | Polling loop | Redis TTL + Keyspace Notifications (`notify-keyspace-events Ex`) |
-| Race between payment & expiry | Application-level check | Optimistic locking (`@Version`) on Booking entity |
-| Poison-pill messages | Block the partition | Dead Letter Queue (`ticket-reservations-dlq`) + `ErrorHandler` |
+| Challenge                     | Naive Approach                     | Ticketizer's Approach                                            |
+| ----------------------------- | ---------------------------------- | ---------------------------------------------------------------- |
+| Concurrent seat requests      | `SELECT FOR UPDATE` on seats table | Atomic Redis Lua script — single-threaded, no DB touch           |
+| Duplicate messages on retry   | At-most-once delivery              | `enable.idempotence=true` + `INSERT ... ON CONFLICT DO NOTHING`  |
+| Connection pool exhaustion    | Direct DB writes on every request  | Kafka consumer drains at a controlled pace                       |
+| Expired seat holds            | Polling loop                       | Redis TTL + Keyspace Notifications (`notify-keyspace-events Ex`) |
+| Race between payment & expiry | Application-level check            | Optimistic locking (`@Version`) on Booking entity                |
+| Poison-pill messages          | Block the partition                | Dead Letter Queue (`ticket-reservations-dlq`) + `ErrorHandler`   |
 
 ---
 
 ## Tech Stack
 
 **Backend**
+
 - Java 21 (virtual threads ready), Spring Boot 3.3
 - Spring Data JPA + Hibernate 6, Flyway migrations
 - Spring Data Redis (`StringRedisTemplate`, `ReactiveRedisTemplate`)
@@ -122,12 +123,14 @@ sequenceDiagram
 - Zipkin / OpenTelemetry — distributed tracing
 
 **Frontend**
+
 - Next.js 15 (App Router), TypeScript
 - Tailwind CSS, Framer Motion
 - Zustand (seat selection state), SWR (data fetching)
 - `qrcode.react` — inline QR ticket generation
 
 **Infrastructure**
+
 - PostgreSQL 16 — source of truth
 - Redis 7 — inventory layer + distributed locks
 - Apache Kafka 3.6 (Confluent) — async event bus
@@ -162,6 +165,7 @@ This spins up PostgreSQL, Redis (with keyspace notifications enabled), Kafka, an
 On first boot, Flyway runs all migrations in `src/main/resources/db/migration/` and the data seeder creates a sample event with 200 seats. Backend starts at `http://localhost:8080`.
 
 Verify it's healthy:
+
 ```bash
 curl http://localhost:8080/actuator/health
 ```
@@ -235,16 +239,16 @@ Ticketizer/
 
 ## API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/events` | List all events with pagination |
-| `GET` | `/api/events/{id}` | Event detail + available shows |
-| `GET` | `/api/shows/{showId}/seats` | Live seat map (polls every 5s) |
-| `POST` | `/api/bookings` | Lock seats → returns 202 PENDING |
-| `GET` | `/api/bookings/{id}` | Booking status (PENDING → CONFIRMED) |
-| `POST` | `/api/bookings/{id}/confirm` | Trigger payment confirmation flow |
-| `DELETE` | `/api/bookings/{id}` | Cancel booking + release seat lock |
-| `GET` | `/api/users/me/bookings` | Authenticated user's booking history |
+| Method   | Endpoint                     | Description                          |
+| -------- | ---------------------------- | ------------------------------------ |
+| `GET`    | `/api/events`                | List all events with pagination      |
+| `GET`    | `/api/events/{id}`           | Event detail + available shows       |
+| `GET`    | `/api/shows/{showId}/seats`  | Live seat map (polls every 5s)       |
+| `POST`   | `/api/bookings`              | Lock seats → returns 202 PENDING     |
+| `GET`    | `/api/bookings/{id}`         | Booking status (PENDING → CONFIRMED) |
+| `POST`   | `/api/bookings/{id}/confirm` | Trigger payment confirmation flow    |
+| `DELETE` | `/api/bookings/{id}`         | Cancel booking + release seat lock   |
+| `GET`    | `/api/users/me/bookings`     | Authenticated user's booking history |
 
 All endpoints require `Authorization: Bearer <jwt>` except `GET /api/events`.
 
@@ -295,12 +299,12 @@ RAZORPAY_KEY_SECRET=your_secret_here
 
 ## Deployment
 
-| Service | Platform | Tier |
-|---------|----------|------|
-| Frontend | [Vercel](https://vercel.com) | Hobby (free) |
-| Backend | [Render](https://render.com) | Free web service |
-| PostgreSQL | [Neon](https://neon.tech) | Free serverless |
-| Redis + Kafka | [Upstash](https://upstash.com) | Free tier |
+| Service       | Platform                       | Tier             |
+| ------------- | ------------------------------ | ---------------- |
+| Frontend      | [Vercel](https://vercel.com)   | Hobby (free)     |
+| Backend       | [Render](https://render.com)   | Free web service |
+| PostgreSQL    | [Neon](https://neon.tech)      | Free serverless  |
+| Redis + Kafka | [Upstash](https://upstash.com) | Free tier        |
 
 Connect the Render backend's environment variables to the Neon and Upstash connection strings and set `CORS_ORIGIN` to your Vercel URL.
 
