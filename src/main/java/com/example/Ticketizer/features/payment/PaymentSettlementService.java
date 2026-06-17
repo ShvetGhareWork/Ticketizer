@@ -28,6 +28,7 @@ public class PaymentSettlementService {
     private final QrCodeGeneratorService qrCodeGeneratorService;
     private final UserRepository userRepository;
     private final NoftificationPublisherProducer notificationPublisherProducer;
+    private final com.example.Ticketizer.features.notification.NotificationRepository notificationRepository;
 
     @Transactional
     public void fulfillOrder(PaymentCallbackRequest request) {
@@ -89,6 +90,25 @@ public class PaymentSettlementService {
             
             bookingRepository.save(finalBooking);
             seatRepository.save(finalBooking.getSeat());
+
+            // Save in-app notification
+            try {
+                String eventTitle = finalBooking.getCustomEventTitle() != null ? finalBooking.getCustomEventTitle().split(":::imageURL:::")[0] : finalBooking.getShow().getEvent().getTitle();
+                String seatNum = finalBooking.getSeat().getSeatNumber();
+                String messageText = String.format("Your ticket for event '%s' at seat %s is confirmed!", eventTitle, seatNum);
+                
+                com.example.Ticketizer.features.notification.Notification notification = com.example.Ticketizer.features.notification.Notification.builder()
+                        .userId(finalBooking.getUserId())
+                        .message(messageText)
+                        .type("CONFIRMATION")
+                        .isRead(false)
+                        .createdAt(java.time.Instant.now())
+                        .build();
+                notificationRepository.save(notification);
+                log.info("In-app notification saved for confirmed booking ID: {}", finalBooking.getBookingReference());
+            } catch (Exception ex) {
+                log.error("Failed to save in-app notification for confirmed booking: {}", ex.getMessage(), ex);
+            }
 
             // Evict lock registration metadata block cleanly out of Redis memory mapping space
             String lockedHashKey = "show:" + finalBooking.getShow().getId() + ":locked_seats";

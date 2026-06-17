@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { Copy, Clock, Shield, ShieldAlert, Check } from "lucide-react";
+import { Copy, Clock, Shield, ShieldAlert, Check, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -35,6 +35,7 @@ export default function BookingConfirmationPage() {
     useApp();
 
   const [bookingsData, setBookingsData] = useState<BookingDetails[]>([]);
+  const isAllConfirmed = bookingsData.length > 0 && bookingsData.every((b) => b.status === "CONFIRMED");
   const [loading, setLoading] = useState(true);
   // Capture seat labels at time of render before clearActiveAllocation() wipes them
   const [capturedSeats, setCapturedSeats] = useState<string>(
@@ -196,7 +197,7 @@ export default function BookingConfirmationPage() {
             venue: results[0].venue || eventVenue,
             seats: `${formattedSeats} · Standard`,
             price: `$${(totalPrice * 1.05).toFixed(2)}`,
-            status: "CONFIRMED",
+            status: results[0].status,
             image:
               eventContext?.image ||
               "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400",
@@ -242,16 +243,27 @@ export default function BookingConfirmationPage() {
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 200, damping: 20 }}
-            className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 bg-blue-50 border-4 border-blue-600 rounded-full flex items-center justify-center mb-4 sm:mb-6"
+            className={`w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 border-4 rounded-full flex items-center justify-center mb-4 sm:mb-6 ${
+              isAllConfirmed 
+                ? "bg-green-50 border-green-600" 
+                : "bg-amber-50 border-amber-500"
+            }`}
           >
-            <Check
-              className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 text-blue-600"
-              strokeWidth={3}
-            />
+            {isAllConfirmed ? (
+              <Check
+                className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 text-green-600"
+                strokeWidth={3}
+              />
+            ) : (
+              <Clock
+                className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 text-amber-500"
+                strokeWidth={3}
+              />
+            )}
           </motion.div>
 
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-gray-900 tracking-tight mb-3 sm:mb-4 uppercase">
-            Booking Confirmed
+            {isAllConfirmed ? "Booking Confirmed" : "Booking Pending"}
           </h1>
 
           <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 text-blue-700 px-3 sm:px-4 py-1.5 rounded-md font-mono text-xs sm:text-sm font-bold tracking-wide mb-4 sm:mb-6 max-w-full">
@@ -271,11 +283,26 @@ export default function BookingConfirmationPage() {
           </div>
 
           <p className="text-sm sm:text-base text-gray-600 font-medium px-4">
-            Your tickets have been sent to{" "}
-            <span className="text-gray-900 font-bold break-all">
-              {userEmail}
-            </span>
+            {isAllConfirmed ? (
+              <>
+                Your tickets have been sent to{" "}
+                <span className="text-gray-900 font-bold break-all">
+                  {userEmail}
+                </span>
+              </>
+            ) : (
+              "Please complete your payment to finalize this booking and generate your entry QR code."
+            )}
           </p>
+
+          {!isAllConfirmed && (
+            <Link
+              href={`/checkout/${encodeURIComponent(bookingId)}`}
+              className="mt-6 px-6 py-3 bg-blue-650 hover:bg-blue-700 text-white font-bold text-sm tracking-wider rounded-lg shadow-md hover:shadow-lg uppercase transition-all flex items-center gap-2"
+            >
+              Complete Payment <ArrowRight size={16} />
+            </Link>
+          )}
         </div>
 
         {/* Render a consolidated ticket card enlisting all seats! */}

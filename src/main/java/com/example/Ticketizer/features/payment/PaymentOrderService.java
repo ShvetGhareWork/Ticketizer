@@ -46,8 +46,14 @@ public class PaymentOrderService {
             totalPrice += booking.getShow().getPrice();
         }
 
+        // Apply 5% convenience fee
+        double totalWithFee = totalPrice * 1.05;
+
+        // Convert USD to INR (1 USD = 84 INR)
+        double priceInINR = totalWithFee * 84.0;
+
         // Convert double price context to minor currency units (e.g., 350.00 INR -> 35000 Paise)
-        int amountInPaise = (int) (totalPrice * 100);
+        int amountInPaise = (int) Math.round(priceInINR * 100);
 
         JSONObject orderRequest = new JSONObject();
         orderRequest.put("amount", amountInPaise);

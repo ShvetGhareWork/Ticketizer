@@ -6,6 +6,7 @@ import { Calendar, MapPin, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
+import { useApp } from "@/context/AppContext";
 
 // Initialize the font
 const jakarta = Plus_Jakarta_Sans({
@@ -16,6 +17,7 @@ const jakarta = Plus_Jakarta_Sans({
 
 export default function MyBookingsPage() {
   const router = useRouter();
+  const { showToast } = useApp();
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "cancelled">("upcoming");
@@ -69,7 +71,7 @@ export default function MyBookingsPage() {
             date: dateStr,
             venue: b.venue,
             seats: `${b.seatNumber} · ${b.hallName || "StandardSeating"}`,
-            price: `£${(b.price || 150.0).toFixed(2)}`,
+            price: `$${(b.price || 150.0).toFixed(2)} (₹${((b.price || 150.0) * 84).toFixed(0)})`,
             status: b.status,
             image: finalImage,
             rawStartTime: b.startTime,
@@ -106,6 +108,7 @@ export default function MyBookingsPage() {
       });
       if (response.ok) {
         setMessage({ text: "Ticket cancelled successfully. Your seat has been released.", type: "success" });
+        showToast("Ticket successfully cancelled. Seat released.", "success");
         await fetchMyBookings();
         setTimeout(() => {
           setShowCancelModal(false);
@@ -115,9 +118,11 @@ export default function MyBookingsPage() {
       } else {
         const errorData = await response.json();
         setMessage({ text: errorData.error || "Failed to cancel ticket.", type: "error" });
+        showToast(errorData.error || "Failed to cancel ticket.", "error");
       }
     } catch (err) {
       setMessage({ text: "Failed to connect to backend server.", type: "error" });
+      showToast("Failed to connect to backend server.", "error");
     } finally {
       setCancelling(false);
     }
@@ -267,33 +272,41 @@ export default function MyBookingsPage() {
                 <div className="block md:hidden h-px w-full border-t border-dashed border-gray-200 my-1"></div>
 
                 {/* Action Area (Status, Price, View/Cancel) */}
-                <div className="md:w-[150px] lg:w-[190px] flex flex-row md:flex-col justify-between items-center md:items-end flex-shrink-0 py-1 gap-4">
-                  <div className="flex md:flex-col justify-between md:items-end items-center w-auto gap-3 md:gap-2">
-                    <span className={`text-[8px] sm:text-[9px] font-bold px-2 py-1 rounded-[4px] uppercase tracking-wider text-white ${
+                <div className="w-full md:w-[180px] lg:w-[220px] flex flex-col sm:flex-row md:flex-col justify-between items-stretch sm:items-center md:items-end flex-shrink-0 gap-4 mt-2 md:mt-0">
+                  <div className="flex sm:flex-col justify-between items-center sm:items-start md:items-end w-full sm:w-auto gap-2">
+                    <span className={`text-[8px] sm:text-[9px] font-bold px-2 py-1 rounded-[4px] uppercase tracking-wider text-white w-fit ${
                       booking.status === "CANCELLED" ? "bg-red-500" : booking.status === "CONFIRMED" ? "bg-emerald-600" : "bg-[#1860D4]"
                     }`}>
                       {booking.status}
                     </span>
-                    <span className="text-blue-700 font-medium text-base sm:text-lg md:mt-1">
+                    <span className="text-blue-750 font-bold text-base sm:text-lg md:mt-1">
                       {booking.price}
                     </span>
                   </div>
 
-                  <div className="flex md:flex-col gap-2 w-full justify-end items-end">
+                  <div className="flex flex-col sm:flex-row md:flex-col gap-2 w-full sm:w-auto md:w-full items-stretch justify-end">
                     {booking.status !== "CANCELLED" && (
                       <button
                         onClick={() => {
-                          router.push(`/booking/${booking.id}/confirmation`);
+                          if (booking.status === "CONFIRMED") {
+                            router.push(`/booking/${booking.id}/confirmation`);
+                          } else {
+                            router.push(`/checkout/${booking.id}`);
+                          }
                         }}
-                        className="w-full text-[10px] sm:text-[11px] font-bold tracking-widest text-blue-600 uppercase flex items-center justify-center gap-1.5 hover:text-blue-800 transition-colors py-1.5 border border-blue-200 rounded-md hover:bg-blue-50/50 min-h-[36px]"
+                        className={`w-full sm:w-auto md:w-full text-[10px] sm:text-[11px] font-bold tracking-widest uppercase flex items-center justify-center gap-1.5 transition-colors py-2 px-3 border rounded-md min-h-[38px] ${
+                          booking.status === "CONFIRMED" 
+                            ? "text-blue-600 border-blue-200 hover:text-blue-800 hover:bg-blue-50/50" 
+                            : "text-amber-600 border-amber-200 hover:text-amber-800 hover:bg-amber-50/50"
+                        }`}
                       >
-                        VIEW TICKET <ArrowRight size={14} />
+                        {booking.status === "CONFIRMED" ? "VIEW TICKET" : "COMPLETE PAYMENT"} <ArrowRight size={14} />
                       </button>
                     )}
                     {activeTab === "upcoming" && (
                       <button
                         onClick={() => handleCancelRequest(booking)}
-                        className="w-full text-[10px] sm:text-[11px] font-bold tracking-widest text-red-600 uppercase flex items-center justify-center gap-1.5 hover:text-red-850 transition-colors py-1.5 border border-red-200 rounded-md hover:bg-red-50/50 min-h-[36px]"
+                        className="w-full sm:w-auto md:w-full text-[10px] sm:text-[11px] font-bold tracking-widest text-red-600 uppercase flex items-center justify-center gap-1.5 hover:text-red-800 transition-colors py-2 px-3 border border-red-200 rounded-md hover:bg-red-50/50 min-h-[38px]"
                       >
                         CANCEL TICKET
                       </button>
@@ -338,7 +351,7 @@ export default function MyBookingsPage() {
               <button
                 disabled={cancelling}
                 onClick={handleConfirmCancel}
-                className="px-4 py-2 bg-red-650 hover:bg-red-700 text-white font-semibold text-sm rounded-lg shadow-sm hover:shadow transition-all disabled:opacity-50 min-h-[44px]"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold text-sm rounded-lg shadow-sm hover:shadow transition-all disabled:opacity-50 min-h-[44px]"
               >
                 {cancelling ? "Processing..." : "Confirm"}
               </button>

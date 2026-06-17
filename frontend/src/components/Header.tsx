@@ -29,7 +29,7 @@ export default function Header() {
         </Link>
         {/* Responsive Nav Links */}
         {!isBookingPath && (
-          <div className="flex gap-2.5 sm:gap-8 text-[10px] sm:text-xs md:text-sm font-extrabold text-gray-500 tracking-wider">
+          <div className="flex gap-2 sm:gap-6 md:gap-8 text-[9px] sm:text-xs md:text-sm font-extrabold text-gray-500 tracking-wider">
             <Link
               href="/events"
               className={`${
@@ -50,6 +50,16 @@ export default function Header() {
             >
               MY BOOKINGS
             </Link>
+            <Link
+              href="/notifications"
+              className={`${
+                pathname === "/notifications"
+                  ? "text-blue-600 border-b-2 border-blue-600 pb-1"
+                  : "hover:text-gray-900 transition-colors"
+              }`}
+            >
+              NOTIFICATIONS
+            </Link>
           </div>
         )}
       </div>
@@ -66,10 +76,10 @@ export default function Header() {
                 logout();
                 router.push("/auth/login");
               }}
-              className="flex items-center gap-1 text-[10px] sm:text-sm font-bold text-red-600 border border-red-200 hover:bg-red-50 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-sm transition-all cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1.5 text-[10px] sm:text-sm font-bold text-red-600 border border-red-200 hover:bg-red-50 p-2 sm:px-4 sm:py-2 rounded-sm transition-all cursor-pointer whitespace-nowrap"
             >
-              <LogOut size={12} className="sm:w-3.5 sm:h-3.5" />
-              Sign Out
+              <LogOut size={13} className="sm:w-3.5 sm:h-3.5" />
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         ) : (

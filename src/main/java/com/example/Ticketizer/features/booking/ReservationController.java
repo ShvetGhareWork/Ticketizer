@@ -8,6 +8,8 @@ import com.example.Ticketizer.features.inventory.Seat;
 import com.example.Ticketizer.features.inventory.SeatStatus;
 import com.example.Ticketizer.features.booking.ReservationResponse;
 // import com.example.Ticketizer.domain.service.ReservationService;
+import com.example.Ticketizer.features.booking.Booking;
+import com.example.Ticketizer.features.booking.BookingStatus;
 import com.example.Ticketizer.features.booking.BookingRepository;
 import com.example.Ticketizer.features.inventory.SeatRepository;
 import com.example.Ticketizer.features.inventory.ShowRepository;
@@ -137,6 +139,68 @@ public ResponseEntity<?> reserveSeat(
     // 4. Return Immediate High-Speed Response
     return ResponseEntity.ok(new ReservationResponse(bookingId, "PENDING_CONFIRMATION"));
 }
+
+    /**
+     * Releases a lock lease on a seat.
+     */
+    @DeleteMapping("/show/{showId}/seat/{seatId}")
+    @Transactional
+    public ResponseEntity<?> releaseSeat(
+            @PathVariable Long showId,
+            @PathVariable Long seatId,
+            org.springframework.security.core.Authentication authentication) {
+        Long securedUserId = (Long) authentication.getPrincipal();
+        log.info("Secure release lock request received for Seat: {} on Show: {} by User: {}", seatId, showId, securedUserId);
+
+        String lockedHashKey = "show:" + showId + ":locked_seats";
+        String lockedUser = (String) redisTemplate.opsForHash().get(lockedHashKey, String.valueOf(seatId));
+
+        if (lockedUser == null) {
+            log.warn("Release lock fail: Seat {} for Show {} is not locked.", seatId, showId);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "status", "NOT_FOUND",
+                "message", "Seat is not locked."
+            ));
+        }
+
+        if (!lockedUser.equals(String.valueOf(securedUserId))) {
+            log.warn("Release lock unauthorized: User {} tried to release seat {} owned by user {}.", securedUserId, seatId, lockedUser);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "status", "FORBIDDEN",
+                "message", "You do not own the lock on this seat."
+            ));
+        }
+
+        boolean released = reservationEngine.releaseSeat(showId, seatId);
+        if (released) {
+            // Revert database status for any pending booking of this show, seat and user.
+            List<Booking> userBookings = bookingRepository.findByUserIdOrderByIdDesc(securedUserId);
+            for (Booking booking : userBookings) {
+                if (booking.getShow().getId().equals(showId) && 
+                    booking.getSeat().getId().equals(seatId) && 
+                    booking.getStatus() == BookingStatus.PENDING) {
+                    
+                    booking.setStatus(BookingStatus.EXPIRED);
+                    bookingRepository.save(booking);
+                    
+                    Seat seat = booking.getSeat();
+                    seat.setStatus(SeatStatus.AVAILABLE);
+                    seatRepository.save(seat);
+                    log.info("Relational rollback committed for seat {} on show {} via manual release.", seatId, showId);
+                }
+            }
+            return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "message", "Seat reservation released successfully."
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "status", "ERROR",
+                "message", "Failed to release the seat."
+            ));
+        }
+    }
+
     /**
      * Clears all relational bookings, resets seat statuses to AVAILABLE in PostgreSQL,
      * deletes active Redis locks, and restores the available sets in Redis cache.

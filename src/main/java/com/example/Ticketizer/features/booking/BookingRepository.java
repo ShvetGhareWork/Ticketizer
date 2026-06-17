@@ -13,5 +13,5 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     boolean existsByBookingReference(String bookingReference);
     List<Booking> findByStatusAndCreatedAtBefore(BookingStatus status, Instant threshold);
     java.util.Optional<Booking> findByBookingReference(String bookingReference);
-    java.util.List<Booking> findByUserId(Long userId);
+    java.util.List<Booking> findByUserIdOrderByIdDesc(Long userId);
 }

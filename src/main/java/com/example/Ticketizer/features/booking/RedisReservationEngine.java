@@ -78,6 +78,8 @@ public List<SeatStateResponse> getRealTimeSeatStatuses(Long showId) {
     Set<String> availableSeats = redisTemplate.opsForSet().members(availableSetKey);
     Set<Object> lockedSeats = redisTemplate.opsForHash().keys(lockedHashKey);
 
+
+    // 2. Convert the fetched seat IDs to Long for easier comparison
     Set<Long> availableIds = availableSeats != null ? availableSeats.stream().map(Long::valueOf).collect(Collectors.toSet()) : Set.of();
     Set<Long> lockedIds = lockedSeats != null ? lockedSeats.stream().map(k -> Long.valueOf((String) k)).collect(Collectors.toSet()) : Set.of();
 

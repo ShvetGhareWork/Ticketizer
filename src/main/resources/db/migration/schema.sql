@@ -4,6 +4,7 @@
 
 -- ── Idempotency Clean Slate Drops ─────────────────────────────────────────────
 DROP TABLE IF EXISTS bookings CASCADE;
+DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS seats CASCADE;
 DROP TABLE IF EXISTS shows CASCADE;
 DROP TABLE IF EXISTS events CASCADE;
@@ -84,3 +85,15 @@ CREATE INDEX idx_booking_show_status ON bookings(show_id, status);
 
 -- Optimizes user dashboard lookups
 CREATE INDEX idx_booking_user ON bookings(user_id);
+
+-- ── notifications (In-app alerts) ──────────────────────────────────────────────
+CREATE TABLE notifications (
+    id         BIGSERIAL    PRIMARY KEY,
+    user_id    BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message    VARCHAR(255) NOT NULL,
+    type       VARCHAR(50)  NOT NULL,
+    is_read    BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notification_user ON notifications(user_id);

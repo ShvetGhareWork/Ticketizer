@@ -23,7 +23,7 @@ export default function CheckoutPage() {
     ? decodeURIComponent(params.bookingId as string)
     : "";
 
-  const { activeAllocation, addLog, authToken, clearActiveAllocation } =
+  const { activeAllocation, addLog, authToken, clearActiveAllocation, showToast } =
     useApp();
 
   const [timeLeft, setTimeLeft] = useState(449); // 7 mins 29 secs
@@ -286,6 +286,7 @@ export default function CheckoutPage() {
                 "SUCCESS",
                 `SETTLEMENT RESOLVED: Payment confirmed. Redirecting to booking confirmation...`,
               );
+              showToast("Payment successful! Tickets confirmed.", "success");
               router.push(
                 `/booking/${encodeURIComponent(bookingId)}/confirmation`,
               );
@@ -673,15 +674,19 @@ export default function CheckoutPage() {
                     ${fee.toFixed(2)}
                   </span>
                 </div>
-              </div>
-
-              <div className="bg-[#EBF3FF] rounded-lg p-3.5 sm:p-4 flex justify-between items-center mb-5 sm:mb-6 border border-blue-100">
-                <span className="text-[10px] sm:text-xs font-bold tracking-widest text-blue-900 uppercase">
-                  Total Amount
-                </span>
-                <span className="text-xl sm:text-2xl font-black text-blue-700">
-                  ${total.toFixed(2)}
-                </span>
+              </div>              <div className="bg-[#EBF3FF] rounded-lg p-3.5 sm:p-4 flex flex-col gap-2 mb-5 sm:mb-6 border border-blue-100">
+                <div className="flex justify-between items-center w-full">
+                  <span className="text-[10px] sm:text-xs font-bold tracking-widest text-blue-900 uppercase">
+                    Total Amount
+                  </span>
+                  <span className="text-xl sm:text-2xl font-black text-blue-700">
+                    ${total.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center w-full pt-2 border-t border-blue-200 text-[11px] sm:text-xs font-extrabold text-blue-900">
+                  <span>Payable in Rupees (INR)</span>
+                  <span className="font-mono text-sm sm:text-base text-blue-700">₹{(total * 84).toFixed(0)}</span>
+                </div>
               </div>
 
               <div className="bg-[#FFF4E5] border border-[#FFE0B2] text-[#E65100] rounded-lg py-2.5 px-3 sm:py-3 sm:px-4 text-center text-[10px] sm:text-xs font-medium mb-4">
@@ -690,21 +695,21 @@ export default function CheckoutPage() {
                   {formatTime(timeLeft)}
                 </span>
               </div>
-
+ 
               {/* Desktop Checkout CTA */}
               <div className="hidden lg:block">
                 <button
                   type="submit"
                   disabled={isSubmitDisabled}
-                  className="w-full flex items-center justify-center gap-2 bg-[#0D6EFD] text-white py-4 min-h-[48px] rounded-lg font-bold tracking-wide hover:bg-blue-700 transition-colors shadow-md disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-full flex items-center justify-center gap-2 bg-[#0D6EFD] text-white py-3.5 px-2 min-h-[48px] rounded-lg text-xs sm:text-sm lg:text-base font-bold tracking-wide hover:bg-blue-700 transition-colors shadow-md disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {isProcessing
                     ? "Processing..."
-                    : `Confirm & Pay $${total.toFixed(2)}`}{" "}
-                  <ArrowRight size={18} />
+                    : `Confirm & Pay ₹${(total * 84).toFixed(0)} ($${total.toFixed(2)})`}{" "}
+                  <ArrowRight size={18} className="flex-shrink-0" />
                 </button>
               </div>
-
+ 
               <div className="mt-4 sm:mt-5 flex items-center justify-center gap-2 text-gray-400">
                 <ShieldCheck size={14} className="sm:w-4 sm:h-4" />
                 <span className="text-[9px] sm:text-[10px] font-bold tracking-widest uppercase mt-0.5">
@@ -715,13 +720,16 @@ export default function CheckoutPage() {
           </div>
         </form>
       </main>
-
+ 
       {/* MOBILE STICKY BOTTOM CTA (Floating Action Bar) */}
       <div className="lg:hidden fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4 pb-6 sm:pb-4 shadow-[0_-8px_20px_-5px_rgba(0,0,0,0.1)] z-50">
         <div className="flex justify-between items-center mb-3">
           <span className="font-extrabold text-gray-900 text-sm sm:text-base">
             Total:{" "}
-            <span className="font-mono text-blue-700">${total.toFixed(2)}</span>
+            <span className="font-mono text-blue-700">₹{(total * 84).toFixed(0)}</span>
+            <span className="text-xs text-gray-500 font-semibold ml-2">
+              (${total.toFixed(2)})
+            </span>
           </span>
           <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
             {formatTime(timeLeft)} Left
@@ -733,8 +741,8 @@ export default function CheckoutPage() {
           disabled={isSubmitDisabled}
           className="w-full min-h-[48px] py-3.5 bg-[#0D6EFD] text-white hover:bg-blue-700 rounded-lg font-bold text-xs sm:text-sm tracking-widest uppercase flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          {isProcessing ? "Processing..." : "Confirm & Pay"}{" "}
-          <ArrowRight size={16} />
+          {isProcessing ? "Processing..." : `Confirm & Pay ₹${(total * 84).toFixed(0)}`}{" "}
+          <ArrowRight size={16} className="flex-shrink-0" />
         </button>
       </div>
 

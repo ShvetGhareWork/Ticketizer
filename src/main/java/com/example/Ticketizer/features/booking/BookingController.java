@@ -22,6 +22,9 @@ public class BookingController {
     private final JwtTokenProvider tokenProvider;
     private final RedisReservationEngine redisEngine;
     private final com.example.Ticketizer.features.inventory.SeatRepository seatRepository;
+    private final com.example.Ticketizer.features.notification.NotificationRepository notificationRepository;
+    private final com.example.Ticketizer.features.notification.EmailService emailService;
+    private final com.example.Ticketizer.features.auth.UserRepository userRepository;
 
     @GetMapping("/my")
     public ResponseEntity<?> getMyBookings(@RequestHeader("Authorization") String authHeader) {
@@ -34,7 +37,7 @@ public class BookingController {
             Long userId = tokenProvider.getUserIdFromToken(token);
             log.info("Fetching bookings for user ID: {}", userId);
             
-            java.util.List<Booking> bookings = bookingRepository.findByUserId(userId);
+            java.util.List<Booking> bookings = bookingRepository.findByUserIdOrderByIdDesc(userId);
             java.util.List<Map<String, Object>> responseList = new java.util.ArrayList<>();
             
             for (Booking booking : bookings) {
@@ -225,6 +228,54 @@ public class BookingController {
                         log.warn("Relational status set to AVAILABLE, but seat ID {} was not found in Redis lock space.", seat.getId());
                     }
                 }
+            }
+
+            // 4. Save in-app notification & send email
+            try {
+                String eventTitle = booking.getCustomEventTitle() != null ? booking.getCustomEventTitle().split(":::imageURL:::")[0] : (booking.getShow() != null && booking.getShow().getEvent() != null ? booking.getShow().getEvent().getTitle() : "Live Event");
+                String seatNum = (booking.getSeat() != null) ? booking.getSeat().getSeatNumber() : "TBA";
+                
+                // In-app Notification
+                String messageText = String.format("Your ticket for event '%s' at seat %s was successfully cancelled.", eventTitle, seatNum);
+                com.example.Ticketizer.features.notification.Notification notification = com.example.Ticketizer.features.notification.Notification.builder()
+                        .userId(userId)
+                        .message(messageText)
+                        .type("CANCELLATION")
+                        .isRead(false)
+                        .createdAt(java.time.Instant.now())
+                        .build();
+                notificationRepository.save(notification);
+                log.info("In-app cancellation notification saved for user: {}", userId);
+
+                // Dispatch Email
+                com.example.Ticketizer.features.auth.User user = userRepository.findById(userId).orElse(null);
+                if (user != null) {
+                    Double price = (booking.getShow() != null && booking.getShow().getPrice() != null) ? booking.getShow().getPrice() : 150.0;
+                    String imageUrl = "";
+                    if (booking.getCustomEventTitle() != null && booking.getCustomEventTitle().contains(":::imageURL:::")) {
+                        imageUrl = booking.getCustomEventTitle().split(":::imageURL:::")[1];
+                    }
+                    String startTime = "2026-06-01T18:00:00Z";
+                    if (booking.getCustomStartTime() != null) {
+                        startTime = booking.getCustomStartTime();
+                    } else if (booking.getShow() != null && booking.getShow().getStartTime() != null) {
+                        startTime = booking.getShow().getStartTime().toString();
+                    }
+
+                    emailService.sendTicketCancellationEmail(
+                        user.getEmail(),
+                        user.getFullName(),
+                        eventTitle,
+                        seatNum,
+                        booking.getBookingReference(),
+                        price,
+                        imageUrl,
+                        startTime
+                    );
+                    log.info("Cancellation email sent to: {}", user.getEmail());
+                }
+            } catch (Exception ex) {
+                log.error("Failed to save cancellation notification or send email: {}", ex.getMessage(), ex);
             }
             
             return ResponseEntity.ok(Map.of("message", "Booking cancelled successfully. Seat has been released."));

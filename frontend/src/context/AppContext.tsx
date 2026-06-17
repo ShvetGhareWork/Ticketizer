@@ -34,6 +34,12 @@ export interface ConsoleLogEntry {
   message: string;
 }
 
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+}
+
 interface AppContextType {
   authToken: string | null;
   isVerified: boolean;
@@ -45,6 +51,8 @@ interface AppContextType {
   latency: number | null;
   logs: ConsoleLogEntry[];
   isRefreshing: boolean;
+  toasts: ToastMessage[];
+  showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   login: (email: string, password?: string) => Promise<boolean>;
   loginWithGoogle: (googleCredentialToken: string) => Promise<boolean>;
   register: (fullName: string, email: string, password?: string, phoneNumber?: string, verificationMethod?: string) => Promise<boolean>;
@@ -75,6 +83,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [latency, setLatency] = useState<number | null>(null);
   const [logs, setLogs] = useState<ConsoleLogEntry[]>([]);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    
+    // Auto remove after 4 seconds
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [seatsPerEvent, setSeatsPerEvent] = useState<Record<string, Record<string, Seat>>>({});
 
@@ -630,6 +650,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
           return next;
         });
+        showToast(`Seat ${seatId} deselected.`, 'info');
 
         if (nextSeatLabels.length === 0) {
           setActiveAllocation(null);
@@ -648,6 +669,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           };
           setActiveAllocation(updatedAlloc);
           activeAllocationRef.current = updatedAlloc;
+        }
+
+        // Call backend DELETE endpoint to release lock on real seat
+        const token = authTokenRef.current;
+        const isSimulatedToken = token?.startsWith('simulated-token-') || token?.startsWith('google-token-');
+        const isLiveSeat = (seat as any).isReal && connectionStatus === 'ONLINE' && !isSimulatedToken;
+
+        if (isLiveSeat) {
+          const showId = currentShowIdRef.current;
+          addLog('INGRESS', `LEASE RELEASING: Dispatching fast-path release request for Seat ${seatId}...`);
+          fetch(`http://localhost:8080/api/v1/reservations/show/${showId}/seat/${seat.id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          }).then(response => {
+            if (response.ok) {
+              addLog('SUCCESS', `LEASE RELEASED: Seat ${seatId} successfully unlocked on backend.`);
+            } else {
+              addLog('ERROR', `RELEASE FAILED: Server returned status ${response.status}.`);
+            }
+          }).catch(() => {
+            addLog('ERROR', `RELEASE FAILED: Could not reach backend server to release lock.`);
+          });
         }
       }
       return;
@@ -795,6 +840,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setActiveAllocation(updatedAlloc);
         activeAllocationRef.current = updatedAlloc;
         addLog('SUCCESS', `LEASE CAPTURED: Seat ${seatId} locked. Booking ID: ${data.bookingId.substring(0, 8)}...`);
+        showToast(`Seat ${seatId} successfully locked!`, 'success');
       } else if (response.status === 409) {
         // Conflict! Target seat locked/booked in background
         setSeats((prev) => ({
@@ -802,6 +848,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           [seatId]: { ...prev[seatId], status: 'BOOKED' },
         }));
         addLog('CONFLICT', `CONCURRENT COLLISION: Seat ${seatId} was booked by another client in the background.`);
+        showToast(`Seat ${seatId} is already locked by another user.`, 'error');
       } else {
         throw new Error('Lock refused');
       }
@@ -812,6 +859,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         [seatId]: { ...prev[seatId], status: 'AVAILABLE' },
       }));
       addLog('ERROR', `LEASE LOCK FAULT: Relational lock gateway refused slot allocation for Seat ${seatId}.`);
+      showToast(`Failed to lock seat ${seatId}.`, 'error');
     }
   };
 
@@ -958,6 +1006,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         latency,
         logs,
         isRefreshing,
+        toasts,
+        showToast,
         login,
         loginWithGoogle,
         register,
@@ -976,6 +1026,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+
+      {/* In-app Toast Notification System Popups Overlay */}
+      <div className="fixed top-20 right-4 sm:right-6 z-[9999] flex flex-col gap-3 max-w-[calc(100vw-2rem)] sm:max-w-md w-full pointer-events-none">
+        {toasts.map((toast) => {
+          const isSuccess = toast.type === 'success';
+          const isError = toast.type === 'error';
+          const isWarning = toast.type === 'warning';
+          
+          let bgColor = 'bg-blue-600';
+          if (isSuccess) bgColor = 'bg-emerald-600';
+          if (isError) bgColor = 'bg-red-600';
+          if (isWarning) bgColor = 'bg-amber-500';
+
+          return (
+            <div
+              key={toast.id}
+              className={`p-4 text-white text-xs sm:text-sm font-bold rounded-lg shadow-lg flex items-start justify-between gap-4 pointer-events-auto transition-all duration-300 transform translate-x-0 animate-slide-in ${bgColor}`}
+            >
+              <span className="flex-1 break-words leading-relaxed">{toast.message}</span>
+              <button
+                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                className="text-white/80 hover:text-white transition-colors p-1 flex-shrink-0 -mt-1 -mr-1"
+                aria-label="Close notification"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes slideIn {
+          from {
+            transform: translateY(-20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-in {
+          animation: slideIn 0.3s ease-out forwards;
+        }
+      `}} />
     </AppContext.Provider>
   );
 }

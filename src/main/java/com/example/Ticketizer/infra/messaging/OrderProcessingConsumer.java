@@ -54,6 +54,16 @@ public class OrderProcessingConsumer {
             return;
         }
 
+        // Verify Redis lock still exists for this user (to prevent race conditions from instant release/deselection)
+        String lockedHashKey = "show:" + event.showId() + ":locked_seats";
+        String lockOwner = (String) redisTemplate.opsForHash().get(lockedHashKey, String.valueOf(event.seatId()));
+        if (lockOwner == null || !lockOwner.equals(String.valueOf(event.userId()))) {
+            log.warn("Redis lock has already been evicted or transferred for seat {} on show {}. Skipping relational sync for booking ID: {}",
+                    event.seatId(), event.showId(), event.bookingId());
+            ack.acknowledge();
+            return;
+        }
+
         try {
             persistReservationToStore(event);
             ack.acknowledge();
