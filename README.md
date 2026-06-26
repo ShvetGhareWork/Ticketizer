@@ -14,11 +14,9 @@
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
-**[Live Demo](https://ticketizer-five.vercel.app)** · **[Report Bug](https://github.com/ShvetGhareWork/Ticketizer/issues)** · **[Request Feature](https://github.com/ShvetGhareWork/Ticketizer/issues)**
+**[Report Bug](https://github.com/ShvetGhareWork/Ticketizer/issues)** · **[Request Feature](https://github.com/ShvetGhareWork/Ticketizer/issues)**
 
 </div>
-
-[![Ticketizer System Demonstration](https://img.youtube.com/vi/4TIaE3U9K-Q/maxresdefault.jpg)](https://youtu.be/4TIaE3U9K-Q)
 
 ---
 
@@ -41,11 +39,11 @@ Ticketizer is designed using a decoupled **Spring Cloud Microservices Architectu
 ```mermaid
 graph TD
     Client[Next.js Frontend] -->|HTTP / JSON| Gateway[API Gateway: Port 8080]
-    
+
     subgraph Service Discovery
         Eureka[Eureka Server: Port 8761]
     end
-    
+
     subgraph Spring Cloud Microservices
         Gateway -->|Route /api/v1/auth/**| Auth[Auth Service: Port 8081]
         Gateway -->|Route /api/v1/events/**| Inventory[Inventory Service: Port 8082]
@@ -53,7 +51,7 @@ graph TD
         Gateway -->|Route /api/v1/payments/**| Payment[Payment Service: Port 8084]
         Gateway -->|Route /api/v1/notifications/**| Notification[Notification Service: Port 8085]
     end
-    
+
     subgraph Data & Message Broker
         Postgres[(Postgres: Port 5499)]
         Redis[(Redis Cache: Port 6379)]
@@ -70,6 +68,7 @@ graph TD
 ```
 
 ### Microservices Directory
+
 1. **API Gateway (Spring Cloud Gateway)**: Exposes a single public ingress (`8080`), handles global CORS, and routes traffic dynamically to backend microservices.
 2. **Eureka Server**: A service registry allowing microservices to discover and communicate with each other dynamically.
 3. **Auth Service**: Manages JWT authentication, Google OAuth integrations, user accounts, OTP generation, and email verification.
@@ -117,74 +116,56 @@ sequenceDiagram
 
 ## Key Design Decisions
 
-| Challenge | Naive Approach | Ticketizer's Approach |
-| :--- | :--- | :--- |
-| **Concurrent Seat Requests** | `SELECT FOR UPDATE` on Postgres seats | Atomic Redis Lua script — single-threaded validation in memory. |
-| **Duplicate Message Delivery** | At-most-once delivery | Idempotent consumers + `INSERT ... ON CONFLICT DO NOTHING`. |
-| **Connection Pool Exhaustion** | Direct database writes on request thread | Kafka event consumers drain writes to PostgreSQL at a steady pace. |
-| **Expired Seat Holds** | CRON polling job | Redis TTL + Keyspace Notifications (`notify-keyspace-events Ex`). |
-| **Payment vs. Expiry Race** | Application-level checks | Optimistic Locking (`@Version`) on the DB Booking entities. |
-| **Poison-Pill Messages** | Block Kafka partition | Dead Letter Queue (`ticket-reservations-dlq`) + Custom Error Handlers. |
+| Challenge                      | Naive Approach                           | Ticketizer's Approach                                                  |
+| :----------------------------- | :--------------------------------------- | :--------------------------------------------------------------------- |
+| **Concurrent Seat Requests**   | `SELECT FOR UPDATE` on Postgres seats    | Atomic Redis Lua script — single-threaded validation in memory.        |
+| **Duplicate Message Delivery** | At-most-once delivery                    | Idempotent consumers + `INSERT ... ON CONFLICT DO NOTHING`.            |
+| **Connection Pool Exhaustion** | Direct database writes on request thread | Kafka event consumers drain writes to PostgreSQL at a steady pace.     |
+| **Expired Seat Holds**         | CRON polling job                         | Redis TTL + Keyspace Notifications (`notify-keyspace-events Ex`).      |
+| **Payment vs. Expiry Race**    | Application-level checks                 | Optimistic Locking (`@Version`) on the DB Booking entities.            |
+| **Poison-Pill Messages**       | Block Kafka partition                    | Dead Letter Queue (`ticket-reservations-dlq`) + Custom Error Handlers. |
 
 ---
 
 ## Tech Stack
 
-**Backend**
-- Java 21, Spring Boot 3.3
-- Spring Cloud (Gateway, Netflix Eureka, OpenFeign)
-- Spring Data JPA + Hibernate 6
-- Spring Data Redis (`StringRedisTemplate`, `ReactiveRedisTemplate`)
-- Spring Kafka — idempotent producer, manual ACK consumer
-- Redisson — distributed locks for payment critical sections
-- Spring Security + JWT (stateless auth)
-- Razorpay SDK — payment gateway integration
-- Micrometer + Prometheus — metrics exposure
-- Zipkin / OpenTelemetry — distributed tracing
-
-**Frontend**
-- Next.js 16 (App Router), TypeScript
-- Tailwind CSS, Framer Motion
-- Zustand (seat selection state)
-- Lucide Icons
-- `qrcode.react` — inline QR ticket generation
-
-**Infrastructure**
-- PostgreSQL 16 — source of truth
-- Redis 7 — inventory layer + distributed locks
-- Apache Kafka 3.6 (Confluent) — async event bus
-- Docker Compose — full local stack in one command
-- Mailpit — mock SMTP server
+- **Backend**: Java 21, Spring Boot 3.3, Spring Cloud (Gateway, Netflix Eureka, OpenFeign), Spring Data JPA, Hibernate, Spring Kafka (Idempotent Producer / Manual ACK Consumer), Redisson (Distributed Locks).
+- **Frontend**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS, Framer Motion, Zustand, Lucide Icons.
+- **Infrastructure**: PostgreSQL 16, Redis 7 (Keyspace events enabled), Apache Kafka 3.6 (Confluent Platform), Mailpit (Mock SMTP server), Docker & Docker Compose.
 
 ---
 
 ## Ports Mapping
 
-| Service / Infrastructure | Local Port | URL / Path |
-| :--- | :--- | :--- |
-| **API Gateway** | `8080` | `http://localhost:8080` |
-| **Eureka Discovery Server** | `8761` | `http://localhost:8761` |
-| **Auth Service** | `8081` | `http://localhost:8081` |
-| **Inventory Service** | `8082` | `http://localhost:8082` |
-| **Booking Service** | `8083` | `http://localhost:8083` |
-| **Payment Service** | `8084` | `http://localhost:8084` |
-| **Notification Service** | `8085` | `http://localhost:8085` |
-| **Mailpit Web UI** | `8025` | `http://localhost:8025` |
-| **PostgreSQL Database** | `5499` | `localhost:5499` (DB: `ticketflow`) |
-| **Redis Cache** | `6379` | `localhost:6379` |
-| **Kafka Broker** | `9092` | `localhost:9092` |
-| **Next.js Frontend** | `3000` | `http://localhost:3000` |
+| Service / Infrastructure    | Local Port | URL / Path                          |
+| :-------------------------- | :--------- | :---------------------------------- |
+| **API Gateway**             | `8080`     | `http://localhost:8080`             |
+| **Eureka Discovery Server** | `8761`     | `http://localhost:8761`             |
+| **Auth Service**            | `8081`     | `http://localhost:8081`             |
+| **Inventory Service**       | `8082`     | `http://localhost:8082`             |
+| **Booking Service**         | `8083`     | `http://localhost:8083`             |
+| **Payment Service**         | `8084`     | `http://localhost:8084`             |
+| **Notification Service**    | `8085`     | `http://localhost:8085`             |
+| **Mailpit Web UI**          | `8025`     | `http://localhost:8025`             |
+| **PostgreSQL Database**     | `5499`     | `localhost:5499` (DB: `ticketflow`) |
+| **Redis Cache**             | `6379`     | `localhost:6379`                    |
+| **Kafka Broker**            | `9092`     | `localhost:9092`                    |
+| **Next.js Frontend**        | `3000`     | `http://localhost:3000`             |
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-- Docker & Docker Compose
-- Java 21+
-- Node.js 18+ and npm
 
-### Step 1 — Build the Microservice JARs
+- [Docker & Docker Compose](https://www.docker.com/)
+- [Java 21 JDK](https://openjdk.org/projects/jdk/21/)
+- [Node.js (v18+) & npm](https://nodejs.org/)
+
+---
+
+### Step 1: Build the Microservice JARs
+
 Before running the containers, compile the shared common library and build the executable JAR files:
 
 ```bash
@@ -193,16 +174,19 @@ Before running the containers, compile the shared common library and build the e
 .\mvnw.cmd clean package -DskipTests      # Windows PowerShell
 ```
 
-### Step 2 — Spin Up Infrastructure and Microservices
+### Step 2: Spin Up Infrastructure and Microservices
+
 Build and start all docker containers (PostgreSQL, Redis, Kafka, Mailpit, Eureka Server, Gateway, and services):
 
 ```bash
 docker compose up --build -d
 ```
-> [!NOTE]
-> On first boot, Hibernate will automatically initialize the database schema in PostgreSQL. The system will seed test events and seats automatically. Check the health status of all containers before testing. Wait until `docker compose ps` shows all as `healthy` (~30s for Kafka).
 
-### Step 3 — Run the Frontend
+> [!NOTE]
+> On first boot, Hibernate will automatically initialize the database schema in PostgreSQL. The system will seed test events and seats automatically. Check the health status of all containers before testing.
+
+### Step 3: Run the Frontend
+
 Go to the frontend directory, install dependencies, and run the development server:
 
 ```bash
@@ -212,18 +196,6 @@ npm run dev
 ```
 
 Open `http://localhost:3000` in your web browser.
-
-### Step 4 — Verify the Database Schema
-You can log directly into the PostgreSQL container to check initialized tables:
-
-```bash
-docker exec -it ticketflow-postgres psql -U ticketflow -d ticketflow
-```
-
-```sql
-\dt
-SELECT count(*) FROM seats WHERE status = 'AVAILABLE';
-```
 
 ---
 
@@ -251,23 +223,6 @@ Ticketizer/
 
 ---
 
-## API Reference
-
-| Method   | Endpoint                     | Description                          |
-| -------- | ---------------------------- | ------------------------------------ |
-| `GET`    | `/api/v1/events`             | List all events with pagination      |
-| `GET`    | `/api/v1/events/{id}`         | Event detail + available shows       |
-| `GET`    | `/api/v1/reservations/show/{showId}/seats`  | Live seat map (polls every 5s)       |
-| `POST`   | `/api/v1/bookings`            | Lock seats → returns 202 PENDING     |
-| `GET`    | `/api/v1/bookings/{id}`       | Booking status (PENDING → CONFIRMED) |
-| `POST`   | `/api/v1/payments/settle/{id}` | Trigger payment confirmation flow    |
-| `POST`   | `/api/v1/bookings/{id}/cancel` | Cancel booking + release seat lock   |
-| `GET`    | `/api/v1/bookings/my`         | Authenticated user's booking history |
-
-All write/checkout endpoints require `Authorization: Bearer <jwt>`.
-
----
-
 ## How Seat Expiry Works
 
 When a user selects seats, they are given a **10-minute hold** to complete the payment:
@@ -275,106 +230,6 @@ When a user selects seats, they are given a **10-minute hold** to complete the p
 1. **Redis Hold**: The seats are moved from available to locked in Redis cache via a Lua script, and a key `lock:seat:{seatId}` is created with a `600-second` TTL.
 2. **Expired Event**: If the payment is not completed before the TTL expires, Redis fires a Keyspace Expiration event (`notify-keyspace-events Ex`).
 3. **Database Reversion**: The `booking-service` catches the expiration event, checks if the booking is still `PENDING`, updates its status to `EXPIRED`, and releases the seat locks back to the available pool.
-
----
-
-## Local Environment Variables
-
-Create a `.env` file in the project root if running services locally without Docker:
-
-```env
-# Database
-DB_URL=jdbc:postgresql://localhost:5499/ticketflow
-DB_USERNAME=ticketflow
-DB_PASSWORD=Omganesh2006
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# Kafka
-KAFKA_BOOTSTRAP_SERVERS=localhost:9092
-
-# JWT
-JWT_SECRET=your-256-bit-secret-here
-JWT_EXPIRY_MS=86400000
-
-# Razorpay
-RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxxxx
-RAZORPAY_KEY_SECRET=your_secret_here
-```
-
----
-
-## Deployment & Portability
-
-### Option A: Cloud Hosting
-
-| Service       | Platform                       | Tier             |
-| ------------- | ------------------------------ | ---------------- |
-| Frontend      | [Vercel](https://vercel.com)   | Hobby (free)     |
-| Backend       | [Render](https://render.com)   | Free web service |
-| PostgreSQL    | [Neon](https://neon.tech)      | Free serverless  |
-| Redis + Kafka | [Upstash](https://upstash.com) | Free tier        |
-
-Connect the Render backend's environment variables to the Neon and Upstash connection strings and set `CORS_ORIGIN` to your Vercel URL.
-
-### Option B: Portable Local Node (128GB External Drive Migration)
-You can provision an external drive (`D:\`) as a self-contained, portable node containing the source code, compiled binaries, infrastructure definitions, and persistent data volumes.
-
-```
-/Ticketizer-Node
- ├── /app                  # Spring Boot source code and compiled .jar files
- ├── /infrastructure       # docker-compose.yml, prometheus.yml, and data/ volumes
- └── cloudflared.exe       # Portable Cloudflare tunnel binary
-```
-
-#### 1. Spin Up Infrastructure & Observability
-Navigate to the infrastructure directory and start all containers. All PostgreSQL, Redis, Kafka, Prometheus, and Grafana state files write directly to `./data` volumes on the drive:
-```bash
-cd D:\Ticketizer-Node\infrastructure
-docker compose up -d
-```
-
-#### 2. Run the Backend & Frontend Reverse Proxy
-The frontend uses a reverse proxy config to redirect `/api/v1` traffic to the local backend on port `8080`. This eliminates CORS issues and means you only need to expose **one** public Cloudflare tunnel.
-
-Start Spring Boot modules and the Next.js production server:
-```bash
-# Terminal 1: Backend
-cd D:\Ticketizer-Node\app
-java -Xmx512M -jar target/Ticketizer-0.0.1-SNAPSHOT.jar
-
-# Terminal 2: Frontend
-cd D:\Ticketizer-Node\app\frontend
-npm run start
-```
-
-#### 3. Establish Public Ingress
-Use the portable `cloudflared` binary on the drive to expose the frontend UI (which reverse-proxies API calls automatically):
-```bash
-D:\Ticketizer-Node\cloudflared.exe tunnel --url http://localhost:3000
-```
-This prints a single public URL (e.g. `https://xxxx.trycloudflare.com`) accessible from any browser or mobile phone.
-
-#### 4. Monitor Metrics
-- **Prometheus Scraper**: Available at `http://localhost:9090`. Checks target status.
-- **Grafana Dashboards**: Available at `http://localhost:3001` (login: `admin` / `admin`). Connect data source to `http://prometheus:9090` and import dashboard ID `4701` to view live JVM metrics.
-
----
-
-## Roadmap
-
-- [x] Phase 1 — PostgreSQL schema, JPA entities, Docker Compose
-- [x] Phase 2 — Redis inventory warm-up, atomic Lua seat locking
-- [x] Phase 3 — Kafka idempotent producer, PENDING response pattern
-- [x] Phase 4 — Consumer with manual ACK, DLQ, idempotent DB writes
-- [x] Phase 5 — Seat expiration via Redis TTL + Keyspace Notifications, Redisson locks
-- [x] Phase 6 — Prometheus metrics, distributed tracing, Next.js frontend
-- [x] Razorpay webhook payment confirmation
-- [x] JWT auth + user registration flow
-- [ ] JMeter load test report (target: 50k concurrent users)
-- [ ] GitHub Actions CI pipeline
 
 ---
 
