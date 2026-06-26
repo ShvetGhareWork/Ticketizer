@@ -2,11 +2,12 @@
 
 <h1>Ticketizer</h1>
 
-<p><em>High-concurrency distributed ticket booking engine — built to handle surge traffic without overselling a single seat.</em></p>
+<p><em>High-concurrency distributed ticket booking engine built on a Spring Cloud microservices architecture — engineered to handle massive flash-sale traffic without overselling a single seat.</em></p>
 
 [![Java](https://img.shields.io/badge/Java_21-ED8B00?style=flat-square&logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot_3.3-6DB33F?style=flat-square&logo=spring&logoColor=white)](https://spring.io/projects/spring-boot)
-[![Next.js](https://img.shields.io/badge/Next.js_15-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![Spring Cloud](https://img.shields.io/badge/Spring_Cloud_2023-6DB33F?style=flat-square&logo=spring&logoColor=white)](https://spring.io/projects/spring-cloud)
+[![Next.js](https://img.shields.io/badge/Next.js_16-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Redis](https://img.shields.io/badge/Redis_7-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io)
 [![Kafka](https://img.shields.io/badge/Apache_Kafka-231F20?style=flat-square&logo=apachekafka&logoColor=white)](https://kafka.apache.org)
@@ -23,67 +24,116 @@
 
 ## The Problem
 
-Most ticket booking systems collapse the moment a popular show goes live. Every user hitting "Book" at the same time causes:
+Most ticket booking systems collapse during high-demand sales (e.g., concert tickets or popular movie releases). High concurrent traffic trying to reserve the exact same seats leads to:
 
-- **Database deadlocks** from concurrent `SELECT FOR UPDATE` on the same seat rows
-- **Overselling** when two transactions read "1 seat available" simultaneously and both commit
-- **Cascade failures** as connection pools exhaust under spike traffic
+- **Database deadlocks** due to concurrent `SELECT FOR UPDATE` queries locking identical seat rows.
+- **Overselling** because multiple parallel transactions read "seat available" simultaneously and both commit.
+- **Cascade failures** as database connection pools exhaust under spike traffic, bringing down unrelated services.
 
-Ticketizer solves this by shifting the reservation bottleneck from the database to Redis — where atomic Lua scripts make seat locks a single-threaded, sub-10ms operation — and draining writes asynchronously through Kafka.
+Ticketizer resolves this by shifting the reservation bottleneck from the database to an **in-memory Redis cache**—where atomic Lua scripts perform seat lock verification as a single-threaded, sub-10ms operation—and draining writes asynchronously using **Apache Kafka** event streams.
 
 ---
 
-## Architecture
-<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/75f5bf66-3e2a-403f-99be-f9a1bb2500a9" />
+## Architecture Overview
 
-### Request lifecycle — booking a seat
+Ticketizer is designed using a decoupled **Spring Cloud Microservices Architecture**:
+
+```mermaid
+graph TD
+    Client[Next.js Frontend] -->|HTTP / JSON| Gateway[API Gateway: Port 8080]
+    
+    subgraph Service Discovery
+        Eureka[Eureka Server: Port 8761]
+    end
+    
+    subgraph Spring Cloud Microservices
+        Gateway -->|Route /api/v1/auth/**| Auth[Auth Service: Port 8081]
+        Gateway -->|Route /api/v1/events/**| Inventory[Inventory Service: Port 8082]
+        Gateway -->|Route /api/v1/bookings/**| Booking[Booking Service: Port 8083]
+        Gateway -->|Route /api/v1/payments/**| Payment[Payment Service: Port 8084]
+        Gateway -->|Route /api/v1/notifications/**| Notification[Notification Service: Port 8085]
+    end
+    
+    subgraph Data & Message Broker
+        Postgres[(Postgres: Port 5499)]
+        Redis[(Redis Cache: Port 6379)]
+        Kafka[[Kafka Broker: Port 9092]]
+        Mailpit[Mailpit SMTP: Port 8025]
+    end
+
+    Auth & Inventory & Booking & Notification -.->|Register| Eureka
+    Auth --> Postgres
+    Inventory --> Postgres & Redis
+    Booking --> Postgres & Redis & Kafka
+    Payment --> Booking
+    Notification --> Postgres & Redis & Kafka & Mailpit
+```
+
+### Microservices Directory
+1. **API Gateway (Spring Cloud Gateway)**: Exposes a single public ingress (`8080`), handles global CORS, and routes traffic dynamically to backend microservices.
+2. **Eureka Server**: A service registry allowing microservices to discover and communicate with each other dynamically.
+3. **Auth Service**: Manages JWT authentication, Google OAuth integrations, user accounts, OTP generation, and email verification.
+4. **Inventory Service**: Manages events, shows, and seat layouts. Responsible for warming up Redis caches with available seats prior to ticket sales.
+5. **Booking Service**: Manages seat locks and reservation states. Locks seats atomically using Lua scripts in Redis and emits booking events to Kafka.
+6. **Payment Service**: Handles Razorpay gateway integration and captures webhook payments to transition bookings from `PENDING` to `CONFIRMED`.
+7. **Notification Service**: Consumes Kafka event streams to send real-time ticket confirmation and registration verification emails via Mailpit SMTP.
+8. **Ticketflow Common**: A shared core dependency containing shared DTOs, security filters, custom models, and utility classes.
+
+---
+
+## Request Lifecycle (Booking a Seat)
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant API as Spring Boot API
+    participant Gateway as API Gateway
+    participant Booking as Booking Service
     participant Redis
     participant Kafka
     participant DB as PostgreSQL
 
-    User->>API: POST /bookings {showId, seatIds, userId}
-    API->>Redis: EVALSHA lua_script {available_set, locked_set, seatId, userId}
+    User->>Gateway: POST /api/v1/bookings {showId, seatIds}
+    Gateway->>Booking: Route Request
+    Booking->>Redis: EVALSHA lua_script {available_set, locked_set, seatId, userId}
 
     alt Seat already locked
-        Redis-->>API: return 0
-        API-->>User: 409 Conflict — seat unavailable
+        Redis-->>Booking: return 0
+        Booking-->>Gateway: 409 Conflict
+        Gateway-->>User: Seat unavailable
     else Seat is free
         Redis->>Redis: SREM available · HSET locked · TTL 600s
-        Redis-->>API: return 1
-        API->>Kafka: produce BookingEvent {bookingId, userId, showId, seatIds}
-        API-->>User: 202 Accepted — status: PENDING
+        Redis-->>Booking: return 1
+        Booking->>Kafka: Produce BookingEvent {bookingId, seatIds, userId}
+        Booking-->>Gateway: 202 Accepted
+        Gateway-->>User: Booking status: PENDING (Hold for 10m)
     end
 
-    Kafka->>DB: consume → INSERT booking ON CONFLICT DO NOTHING
-    Kafka->>DB: UPDATE seats SET status = BOOKED WHERE id IN (...)
+    Kafka->>DB: Asynchronous Consumer drains events
+    DB->>DB: INSERT booking ON CONFLICT DO NOTHING
+    DB->>DB: UPDATE seats SET status = BOOKED WHERE id IN (...)
 ```
 
 ---
 
 ## Key Design Decisions
 
-| Challenge                     | Naive Approach                     | Ticketizer's Approach                                            |
-| ----------------------------- | ---------------------------------- | ---------------------------------------------------------------- |
-| Concurrent seat requests      | `SELECT FOR UPDATE` on seats table | Atomic Redis Lua script — single-threaded, no DB touch           |
-| Duplicate messages on retry   | At-most-once delivery              | `enable.idempotence=true` + `INSERT ... ON CONFLICT DO NOTHING`  |
-| Connection pool exhaustion    | Direct DB writes on every request  | Kafka consumer drains at a controlled pace                       |
-| Expired seat holds            | Polling loop                       | Redis TTL + Keyspace Notifications (`notify-keyspace-events Ex`) |
-| Race between payment & expiry | Application-level check            | Optimistic locking (`@Version`) on Booking entity                |
-| Poison-pill messages          | Block the partition                | Dead Letter Queue (`ticket-reservations-dlq`) + `ErrorHandler`   |
+| Challenge | Naive Approach | Ticketizer's Approach |
+| :--- | :--- | :--- |
+| **Concurrent Seat Requests** | `SELECT FOR UPDATE` on Postgres seats | Atomic Redis Lua script — single-threaded validation in memory. |
+| **Duplicate Message Delivery** | At-most-once delivery | Idempotent consumers + `INSERT ... ON CONFLICT DO NOTHING`. |
+| **Connection Pool Exhaustion** | Direct database writes on request thread | Kafka event consumers drain writes to PostgreSQL at a steady pace. |
+| **Expired Seat Holds** | CRON polling job | Redis TTL + Keyspace Notifications (`notify-keyspace-events Ex`). |
+| **Payment vs. Expiry Race** | Application-level checks | Optimistic Locking (`@Version`) on the DB Booking entities. |
+| **Poison-Pill Messages** | Block Kafka partition | Dead Letter Queue (`ticket-reservations-dlq`) + Custom Error Handlers. |
 
 ---
 
 ## Tech Stack
 
 **Backend**
-
-- Java 21 (virtual threads ready), Spring Boot 3.3
-- Spring Data JPA + Hibernate 6, Flyway migrations
+- Java 21, Spring Boot 3.3
+- Spring Cloud (Gateway, Netflix Eureka, OpenFeign)
+- Spring Data JPA + Hibernate 6
 - Spring Data Redis (`StringRedisTemplate`, `ReactiveRedisTemplate`)
 - Spring Kafka — idempotent producer, manual ACK consumer
 - Redisson — distributed locks for payment critical sections
@@ -93,54 +143,67 @@ sequenceDiagram
 - Zipkin / OpenTelemetry — distributed tracing
 
 **Frontend**
-
-- Next.js 15 (App Router), TypeScript
+- Next.js 16 (App Router), TypeScript
 - Tailwind CSS, Framer Motion
-- Zustand (seat selection state), SWR (data fetching)
+- Zustand (seat selection state)
+- Lucide Icons
 - `qrcode.react` — inline QR ticket generation
 
 **Infrastructure**
-
 - PostgreSQL 16 — source of truth
 - Redis 7 — inventory layer + distributed locks
 - Apache Kafka 3.6 (Confluent) — async event bus
 - Docker Compose — full local stack in one command
+- Mailpit — mock SMTP server
+
+---
+
+## Ports Mapping
+
+| Service / Infrastructure | Local Port | URL / Path |
+| :--- | :--- | :--- |
+| **API Gateway** | `8080` | `http://localhost:8080` |
+| **Eureka Discovery Server** | `8761` | `http://localhost:8761` |
+| **Auth Service** | `8081` | `http://localhost:8081` |
+| **Inventory Service** | `8082` | `http://localhost:8082` |
+| **Booking Service** | `8083` | `http://localhost:8083` |
+| **Payment Service** | `8084` | `http://localhost:8084` |
+| **Notification Service** | `8085` | `http://localhost:8085` |
+| **Mailpit Web UI** | `8025` | `http://localhost:8025` |
+| **PostgreSQL Database** | `5499` | `localhost:5499` (DB: `ticketflow`) |
+| **Redis Cache** | `6379` | `localhost:6379` |
+| **Kafka Broker** | `9092` | `localhost:9092` |
+| **Next.js Frontend** | `3000` | `http://localhost:3000` |
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-
 - Docker & Docker Compose
 - Java 21+
 - Node.js 18+ and npm
 
-### 1 — Start infrastructure
+### Step 1 — Build the Microservice JARs
+Before running the containers, compile the shared common library and build the executable JAR files:
 
 ```bash
-docker compose up -d
+# Clean and compile parent Maven project with all modules
+./mvnw clean package -DskipTests          # Linux/macOS
+.\mvnw.cmd clean package -DskipTests      # Windows PowerShell
 ```
 
-This spins up PostgreSQL, Redis (with keyspace notifications enabled), Kafka, and Zookeeper. All services have health checks — wait until `docker compose ps` shows all as `healthy` (~30s for Kafka).
-
-### 2 — Run the backend
+### Step 2 — Spin Up Infrastructure and Microservices
+Build and start all docker containers (PostgreSQL, Redis, Kafka, Mailpit, Eureka Server, Gateway, and services):
 
 ```bash
-# From the project root
-./mvnw spring-boot:run          # Linux / macOS
-.\mvnw.cmd spring-boot:run      # Windows PowerShell
+docker compose up --build -d
 ```
+> [!NOTE]
+> On first boot, Hibernate will automatically initialize the database schema in PostgreSQL. The system will seed test events and seats automatically. Check the health status of all containers before testing. Wait until `docker compose ps` shows all as `healthy` (~30s for Kafka).
 
-On first boot, Flyway runs all migrations in `src/main/resources/db/migration/` and the data seeder creates a sample event with 200 seats. Backend starts at `http://localhost:8080`.
-
-Verify it's healthy:
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-### 3 — Run the frontend
+### Step 3 — Run the Frontend
+Go to the frontend directory, install dependencies, and run the development server:
 
 ```bash
 cd frontend
@@ -148,9 +211,10 @@ npm install
 npm run dev
 ```
 
-Frontend runs at `http://localhost:3000`.
+Open `http://localhost:3000` in your web browser.
 
-### 4 — Verify the schema
+### Step 4 — Verify the Database Schema
+You can log directly into the PostgreSQL container to check initialized tables:
 
 ```bash
 docker exec -it ticketflow-postgres psql -U ticketflow -d ticketflow
@@ -159,7 +223,6 @@ docker exec -it ticketflow-postgres psql -U ticketflow -d ticketflow
 ```sql
 \dt
 SELECT count(*) FROM seats WHERE status = 'AVAILABLE';
--- Expected: 200
 ```
 
 ---
@@ -168,41 +231,22 @@ SELECT count(*) FROM seats WHERE status = 'AVAILABLE';
 
 ```
 Ticketizer/
-├── src/main/java/com/ticketflow/
-│   ├── domain/
-│   │   ├── entity/            # Event, Show, Seat, Booking + status enums
-│   │   └── repository/        # JPA repositories with custom queries
-│   ├── service/
-│   │   ├── InventoryService   # Redis warm-up + Lua script execution
-│   │   ├── BookingService     # Orchestrates lock → produce → return PENDING
-│   │   └── ExpirationService  # Handles Redis keyspace expired events
-│   ├── kafka/
-│   │   ├── BookingProducer    # Idempotent Kafka producer
-│   │   └── BookingConsumer    # Manual-ACK consumer → Postgres writer
-│   ├── config/                # Redis, Kafka, Security, Redisson config
-│   └── seeder/                # DataSeeder — loads test events on startup
+├── src/
+│   ├── api-gateway/            # Spring Cloud API Gateway (Routing & CORS)
+│   ├── auth-service/           # JWT, User Registration, Google Sign-in & OTP
+│   ├── booking-service/        # Seat allocation, Redis locks, Booking state
+│   ├── eureka-server/          # Spring Cloud Eureka Service Registry
+│   ├── inventory-service/      # Event management, Seat layout & Redis warm-up
+│   ├── notification-service/   # Asynchronous Email alerts via Mailpit
+│   ├── payment-service/        # Webhook integration with Razorpay
+│   └── ticketflow-common/      # Shared domain entities, filters, exceptions & DTOs
 │
-├── src/main/resources/
-│   ├── db/migration/
-│   │   └── V1__init_schema.sql   # Tables, ENUMs, composite indexes
-│   └── application.yml
+├── frontend/                   # Next.js 16 Client (React 19, TS, Zustand)
+│   ├── src/app/                # App Router Pages (Events, Seats, Checkout, My Bookings)
+│   └── src/components/         # Reusable components (SeatGrid, TicketCard, Countdown)
 │
-├── frontend/
-│   ├── src/app/               # Next.js App Router pages
-│   │   ├── page.tsx           # Home — featured events
-│   │   ├── events/[id]/       # Event detail + show selection
-│   │   ├── seats/[showId]/    # Interactive seat map
-│   │   ├── checkout/          # Payment form
-│   │   ├── booking/[id]/      # Confirmation + QR ticket
-│   │   └── my-bookings/       # Booking history
-│   └── src/components/
-│       ├── SeatGrid           # Live seat map (CSS grid, real-time states)
-│       ├── CountdownTimer     # TTL display with expiry callback
-│       ├── TicketCard         # Perforated ticket + QR code
-│       └── BookingStatusBadge # Status pill component
-│
-├── docker-compose.yml         # Postgres + Redis + Kafka + Zookeeper
-└── pom.xml
+├── docker-compose.yml          # Local infra & microservice definitions
+└── pom.xml                     # Parent Maven configuration
 ```
 
 ---
@@ -211,43 +255,38 @@ Ticketizer/
 
 | Method   | Endpoint                     | Description                          |
 | -------- | ---------------------------- | ------------------------------------ |
-| `GET`    | `/api/events`                | List all events with pagination      |
-| `GET`    | `/api/events/{id}`           | Event detail + available shows       |
-| `GET`    | `/api/shows/{showId}/seats`  | Live seat map (polls every 5s)       |
-| `POST`   | `/api/bookings`              | Lock seats → returns 202 PENDING     |
-| `GET`    | `/api/bookings/{id}`         | Booking status (PENDING → CONFIRMED) |
-| `POST`   | `/api/bookings/{id}/confirm` | Trigger payment confirmation flow    |
-| `DELETE` | `/api/bookings/{id}`         | Cancel booking + release seat lock   |
-| `GET`    | `/api/users/me/bookings`     | Authenticated user's booking history |
+| `GET`    | `/api/v1/events`             | List all events with pagination      |
+| `GET`    | `/api/v1/events/{id}`         | Event detail + available shows       |
+| `GET`    | `/api/v1/reservations/show/{showId}/seats`  | Live seat map (polls every 5s)       |
+| `POST`   | `/api/v1/bookings`            | Lock seats → returns 202 PENDING     |
+| `GET`    | `/api/v1/bookings/{id}`       | Booking status (PENDING → CONFIRMED) |
+| `POST`   | `/api/v1/payments/settle/{id}` | Trigger payment confirmation flow    |
+| `POST`   | `/api/v1/bookings/{id}/cancel` | Cancel booking + release seat lock   |
+| `GET`    | `/api/v1/bookings/my`         | Authenticated user's booking history |
 
-All endpoints require `Authorization: Bearer <jwt>` except `GET /api/events`.
+All write/checkout endpoints require `Authorization: Bearer <jwt>`.
 
 ---
 
 ## How Seat Expiry Works
 
-When a user locks a seat, two things happen simultaneously:
+When a user selects seats, they are given a **10-minute hold** to complete the payment:
 
-1. The seat is moved from `show:{id}:available_seats` (Redis Set) to `show:{id}:locked_seats` (Redis Hash) with a **600-second TTL**
-2. A `lock:seat:{seatId}` key is written to Redis with the same TTL
-
-Redis is configured with `notify-keyspace-events Ex`. When the TTL fires, Spring Boot's `KeyExpirationEventMessageListener` catches it and:
-
-- Checks if the booking status is still `PENDING` (not already `CONFIRMED` by payment)
-- If `PENDING`: moves the seat back to the available set, marks the DB record as `EXPIRED`
-- If `CONFIRMED`: no-op — the payment completed in time
+1. **Redis Hold**: The seats are moved from available to locked in Redis cache via a Lua script, and a key `lock:seat:{seatId}` is created with a `600-second` TTL.
+2. **Expired Event**: If the payment is not completed before the TTL expires, Redis fires a Keyspace Expiration event (`notify-keyspace-events Ex`).
+3. **Database Reversion**: The `booking-service` catches the expiration event, checks if the booking is still `PENDING`, updates its status to `EXPIRED`, and releases the seat locks back to the available pool.
 
 ---
 
 ## Local Environment Variables
 
-Create `.env` in the project root (gitignored):
+Create a `.env` file in the project root if running services locally without Docker:
 
 ```env
 # Database
-DB_URL=jdbc:postgresql://localhost:5432/ticketflow
+DB_URL=jdbc:postgresql://localhost:5499/ticketflow
 DB_USERNAME=ticketflow
-DB_PASSWORD=secret
+DB_PASSWORD=Omganesh2006
 
 # Redis
 REDIS_HOST=localhost
@@ -285,7 +324,7 @@ You can provision an external drive (`D:\`) as a self-contained, portable node c
 
 ```
 /Ticketizer-Node
- ├── /app                  # Spring Boot source code and compiled .jar
+ ├── /app                  # Spring Boot source code and compiled .jar files
  ├── /infrastructure       # docker-compose.yml, prometheus.yml, and data/ volumes
  └── cloudflared.exe       # Portable Cloudflare tunnel binary
 ```
@@ -298,9 +337,9 @@ docker compose up -d
 ```
 
 #### 2. Run the Backend & Frontend Reverse Proxy
-The frontend uses a reverse proxy config in `next.config.ts` to redirect `/api/v1` traffic to the local backend on port `8080`. This eliminates CORS issues and means you only need to expose **one** public Cloudflare tunnel.
+The frontend uses a reverse proxy config to redirect `/api/v1` traffic to the local backend on port `8080`. This eliminates CORS issues and means you only need to expose **one** public Cloudflare tunnel.
 
-Start Spring Boot and the Next.js production server:
+Start Spring Boot modules and the Next.js production server:
 ```bash
 # Terminal 1: Backend
 cd D:\Ticketizer-Node\app
@@ -326,7 +365,7 @@ This prints a single public URL (e.g. `https://xxxx.trycloudflare.com`) accessib
 
 ## Roadmap
 
-- [x] Phase 1 — PostgreSQL schema, Flyway migrations, JPA entities, Docker Compose
+- [x] Phase 1 — PostgreSQL schema, JPA entities, Docker Compose
 - [x] Phase 2 — Redis inventory warm-up, atomic Lua seat locking
 - [x] Phase 3 — Kafka idempotent producer, PENDING response pattern
 - [x] Phase 4 — Consumer with manual ACK, DLQ, idempotent DB writes
@@ -353,6 +392,6 @@ git push origin feature/your-feature
 
 <div align="center">
 
-Built by [Shvet Ghare](https://shvet.vercel.app) ·
+Built by [Shvet Ghare](https://shvet.vercel.app)
 
 </div>
