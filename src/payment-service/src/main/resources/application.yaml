@@ -1,0 +1,18 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: payment-service
+
+razorpay:
+  key:
+    id: ${RAZORPAY_KEY_ID:rzp_test_mockkeyid123}
+    secret: ${RAZORPAY_KEY_SECRET:mocksecretkeyid123456}
+  webhook:
+    secret: ${RAZORPAY_WEBHOOK_SECRET:mocksecret123}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}

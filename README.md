@@ -267,7 +267,9 @@ RAZORPAY_KEY_SECRET=your_secret_here
 
 ---
 
-## Deployment
+## Deployment & Portability
+
+### Option A: Cloud Hosting
 
 | Service       | Platform                       | Tier             |
 | ------------- | ------------------------------ | ---------------- |
@@ -277,6 +279,48 @@ RAZORPAY_KEY_SECRET=your_secret_here
 | Redis + Kafka | [Upstash](https://upstash.com) | Free tier        |
 
 Connect the Render backend's environment variables to the Neon and Upstash connection strings and set `CORS_ORIGIN` to your Vercel URL.
+
+### Option B: Portable Local Node (128GB External Drive Migration)
+You can provision an external drive (`D:\`) as a self-contained, portable node containing the source code, compiled binaries, infrastructure definitions, and persistent data volumes.
+
+```
+/Ticketizer-Node
+ ├── /app                  # Spring Boot source code and compiled .jar
+ ├── /infrastructure       # docker-compose.yml, prometheus.yml, and data/ volumes
+ └── cloudflared.exe       # Portable Cloudflare tunnel binary
+```
+
+#### 1. Spin Up Infrastructure & Observability
+Navigate to the infrastructure directory and start all containers. All PostgreSQL, Redis, Kafka, Prometheus, and Grafana state files write directly to `./data` volumes on the drive:
+```bash
+cd D:\Ticketizer-Node\infrastructure
+docker compose up -d
+```
+
+#### 2. Run the Backend & Frontend Reverse Proxy
+The frontend uses a reverse proxy config in `next.config.ts` to redirect `/api/v1` traffic to the local backend on port `8080`. This eliminates CORS issues and means you only need to expose **one** public Cloudflare tunnel.
+
+Start Spring Boot and the Next.js production server:
+```bash
+# Terminal 1: Backend
+cd D:\Ticketizer-Node\app
+java -Xmx512M -jar target/Ticketizer-0.0.1-SNAPSHOT.jar
+
+# Terminal 2: Frontend
+cd D:\Ticketizer-Node\app\frontend
+npm run start
+```
+
+#### 3. Establish Public Ingress
+Use the portable `cloudflared` binary on the drive to expose the frontend UI (which reverse-proxies API calls automatically):
+```bash
+D:\Ticketizer-Node\cloudflared.exe tunnel --url http://localhost:3000
+```
+This prints a single public URL (e.g. `https://xxxx.trycloudflare.com`) accessible from any browser or mobile phone.
+
+#### 4. Monitor Metrics
+- **Prometheus Scraper**: Available at `http://localhost:9090`. Checks target status.
+- **Grafana Dashboards**: Available at `http://localhost:3001` (login: `admin` / `admin`). Connect data source to `http://prometheus:9090` and import dashboard ID `4701` to view live JVM metrics.
 
 ---
 

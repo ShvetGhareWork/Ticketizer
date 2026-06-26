@@ -1,16 +1,7 @@
 version: "3.8"
 
-# Why this file exists:
-#   Instead of installing Postgres/Redis/Kafka on your machine, Docker gives each
-#   service a clean, isolated, reproducible environment. Any team member can run
-#   `docker compose up -d` and get the exact same infra you're using.
-
 services:
   # ─── PostgreSQL ──────────────────────────────────────────────────────────────
-  # The source of truth. All confirmed bookings live here permanently.
-  # We use 16-alpine (lightweight). The healthcheck matters: Spring Boot will
-  # only connect once pg_isready returns success — without it, the app crashes
-  # on startup if Postgres isn't ready yet.
   postgres:
     image: postgres:16-alpine
     container_name: ticketflow-postgres
@@ -29,14 +20,6 @@ services:
       retries: 10
 
   # ─── Redis ───────────────────────────────────────────────────────────────────
-  # The in-memory reservation layer. Two roles:
-  #   1. Seat inventory sets (Phase 2)
-  #   2. Distributed locks via Redisson (Phase 5)
-  #
-  # --notify-keyspace-events Ex: enables "keyevent" notifications for expired keys.
-  # Shvet ghare
-  # This is how Phase 5's expiration engine works — Redis fires an event when a
-  # seat lock TTL expires and our Spring listener catches it.
   redis:
     image: redis:7-alpine
     container_name: ticketflow-redis
@@ -50,9 +33,6 @@ services:
       retries: 10
 
   # ─── Zookeeper ───────────────────────────────────────────────────────────────
-  # Kafka uses Zookeeper for broker coordination (leader election, topic metadata).
-  # Note: Kafka 4.x replaces Zookeeper with KRaft mode. We use 3.x here because
-  # the Confluent image ecosystem is more mature and your Atlas setup uses it too.
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
     container_name: ticketflow-zookeeper
@@ -66,13 +46,6 @@ services:
       retries: 10
 
   # ─── Kafka ───────────────────────────────────────────────────────────────────
-  # The async buffer. Once Redis confirms a seat is locked, the reservation event
-  # goes here. The consumer picks it up and writes to Postgres at its own pace.
-  #
-  # ADVERTISED_LISTENERS split: your Spring Boot app (on your host) uses
-  # localhost:9092. Inter-broker communication (inside Docker network) uses
-  # kafka:29092. Without this split, the broker advertises the wrong address and
-  # your app can't connect.
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: ticketflow-kafka
@@ -91,22 +64,147 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_LOG_RETENTION_HOURS: 24
     healthcheck:
-      test:
-        ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
       interval: 15s
       timeout: 10s
       retries: 10
       start_period: 30s
 
   # ─── Mailpit ─────────────────────────────────────────────────────────────────
-  # A local SMTP testing server. Captures all emails sent from the application
-  # and shows them in a beautiful web UI at http://localhost:8025.
   mailpit:
     image: axllent/mailpit:latest
     container_name: ticketflow-mailpit
     ports:
       - "1025:1025" # SMTP port
       - "8025:8025" # Web UI port
+
+  # ─── Eureka Server ────────────────────────────────────────────────────────────
+  eureka-server:
+    build: ./src/eureka-server
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8761 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── API Gateway ─────────────────────────────────────────────────────────────
+  api-gateway:
+    build: ./src/api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+
+  # ─── Auth Service ────────────────────────────────────────────────────────────
+  auth-service:
+    build: ./src/auth-service
+    container_name: auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+
+  # ─── Inventory Service ───────────────────────────────────────────────────────
+  inventory-service:
+    build: ./src/inventory-service
+    container_name: inventory-service
+    ports:
+      - "8082:8082"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+
+  # ─── Booking Service ──────────────────────────────────────────────────────────
+  booking-service:
+    build: ./src/booking-service
+    container_name: booking-service
+    ports:
+      - "8083:8083"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      SERVICES_AUTH_SERVICE: http://auth-service:8081
+      SERVICES_INVENTORY_SERVICE: http://inventory-service:8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+
+  # ─── Payment Service ──────────────────────────────────────────────────────────
+  payment-service:
+    build: ./src/payment-service
+    container_name: payment-service
+    ports:
+      - "8084:8084"
+    environment:
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      SERVICES_BOOKING_SERVICE: http://booking-service:8083
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+
+  # ─── Notification Service ─────────────────────────────────────────────────────
+  notification-service:
+    build: ./src/notification-service
+    container_name: notification-service
+    ports:
+      - "8085:8085"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      SERVICES_AUTH_SERVICE: http://auth-service:8081
+      SERVICES_BOOKING_SERVICE: http://booking-service:8083
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
 
 volumes:
   pg_data:
