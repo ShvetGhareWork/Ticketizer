@@ -57,7 +57,7 @@ public class RedisReservationEngine {
                 status = "BOOKED";
             }
 
-            matrix.add(new SeatStateResponse(seatId, status));
+            matrix.add(new SeatStateResponse(seatId, seat.getSeatNumber(), status));
         }
 
         return matrix;

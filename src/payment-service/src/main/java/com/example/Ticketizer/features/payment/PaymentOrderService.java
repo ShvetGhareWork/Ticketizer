@@ -53,7 +53,8 @@ public class PaymentOrderService {
             }
         }
 
-        int amountInPaise = (int) (totalPrice * 100);
+        double priceInInr = totalPrice * 84.0;
+        int amountInPaise = (int) (priceInInr * 100);
 
         JSONObject orderRequest = new JSONObject();
         orderRequest.put("amount", amountInPaise);
@@ -62,6 +63,17 @@ public class PaymentOrderService {
         orderRequest.put("payment_capture", 1);
 
         log.info("Creating Razorpay order for ref list: {} with total price: {}", bookingReference, totalPrice);
+        
+        if (keyId.equals("rzp_test_mockkeyid123") || keyId.startsWith("rzp_test_mock")) {
+            log.info("Mock Razorpay credentials detected. Bypassing real Razorpay API call.");
+            return Map.of(
+                    "orderId", "order_mock_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 14),
+                    "amount", String.valueOf(amountInPaise),
+                    "currency", "INR",
+                    "keyId", keyId
+            );
+        }
+
         Order order = razorpayClient.orders.create(orderRequest);
 
         return Map.of(

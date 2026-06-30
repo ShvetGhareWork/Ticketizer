@@ -42,8 +42,9 @@ Ticketizer is designed using a decoupled **Spring Cloud Microservices Architectu
 graph TD
     Client[Next.js Frontend] -->|HTTP / JSON| Gateway[API Gateway: Port 8080]
 
-    subgraph Service Discovery
+    subgraph Service Discovery & Observability
         Eureka[Eureka Server: Port 8761]
+        Zipkin[Zipkin Server: Port 9411]
     end
 
     subgraph Spring Cloud Microservices
@@ -62,6 +63,7 @@ graph TD
     end
 
     Auth & Inventory & Booking & Notification -.->|Register| Eureka
+    Auth & Inventory & Booking & Payment & Notification & Gateway -.->|Send Spans| Zipkin
     Auth --> Postgres
     Inventory --> Postgres & Redis
     Booking --> Postgres & Redis & Kafka
@@ -131,9 +133,9 @@ sequenceDiagram
 
 ## Tech Stack
 
-- **Backend**: Java 21, Spring Boot 3.3, Spring Cloud (Gateway, Netflix Eureka, OpenFeign), Spring Data JPA, Hibernate, Spring Kafka (Idempotent Producer / Manual ACK Consumer), Redisson (Distributed Locks).
+- **Backend**: Java 21, Spring Boot 3.3, Spring Cloud (Gateway, Netflix Eureka, OpenFeign), Spring Data JPA, Hibernate, Spring Kafka (Idempotent Producer / Manual ACK Consumer), Redisson (Distributed Locks), Micrometer Tracing & OTEL.
 - **Frontend**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS, Framer Motion, Zustand, Lucide Icons.
-- **Infrastructure**: PostgreSQL 16, Redis 7 (Keyspace events enabled), Apache Kafka 3.6 (Confluent Platform), Mailpit (Mock SMTP server), Docker & Docker Compose.
+- **Infrastructure**: PostgreSQL 16, Redis 7 (Keyspace events enabled), Apache Kafka 3.6 (Confluent Platform), Mailpit (Mock SMTP server), Zipkin (Distributed tracing engine), Docker & Docker Compose.
 
 ---
 
@@ -148,6 +150,7 @@ sequenceDiagram
 | **Booking Service**         | `8083`     | `http://localhost:8083`             |
 | **Payment Service**         | `8084`     | `http://localhost:8084`             |
 | **Notification Service**    | `8085`     | `http://localhost:8085`             |
+| **Zipkin Distributed Trace** | `9411`    | `http://localhost:9411`             |
 | **Mailpit Web UI**          | `8025`     | `http://localhost:8025`             |
 | **PostgreSQL Database**     | `5499`     | `localhost:5499` (DB: `ticketflow`) |
 | **Redis Cache**             | `6379`     | `localhost:6379`                    |
@@ -232,6 +235,16 @@ When a user selects seats, they are given a **10-minute hold** to complete the p
 1. **Redis Hold**: The seats are moved from available to locked in Redis cache via a Lua script, and a key `lock:seat:{seatId}` is created with a `600-second` TTL.
 2. **Expired Event**: If the payment is not completed before the TTL expires, Redis fires a Keyspace Expiration event (`notify-keyspace-events Ex`).
 3. **Database Reversion**: The `booking-service` catches the expiration event, checks if the booking is still `PENDING`, updates its status to `EXPIRED`, and releases the seat locks back to the available pool.
+
+---
+
+## Performance & Load Testing
+
+We conducted high-concurrency performance validation using Apache JMeter targeting the public seating map endpoint (`GET /api/v1/reservations/show/1/seats`):
+
+- **Concurrency Load**: Simulated multi-threaded concurrent user load.
+- **Latency Performance**: Response times remained **consistently below 200ms**.
+- **Observability**: Real-time trace propagation and service dependency metrics verified successfully on the Zipkin observability dashboard at `http://localhost:9411`.
 
 ---
 

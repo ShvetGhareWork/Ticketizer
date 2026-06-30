@@ -90,6 +90,18 @@ services:
       timeout: 5s
       retries: 10
 
+  # ─── Zipkin ──────────────────────────────────────────────────────────────────
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: ticketflow-zipkin
+    ports:
+      - "9411:9411"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider http://localhost:9411/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # ─── API Gateway ─────────────────────────────────────────────────────────────
   api-gateway:
     build: ./src/api-gateway
@@ -98,8 +110,12 @@ services:
       - "8080:8080"
     environment:
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       eureka-server:
+        condition: service_healthy
+      zipkin:
         condition: service_healthy
 
   # ─── Auth Service ────────────────────────────────────────────────────────────
@@ -113,12 +129,16 @@ services:
       DB_PORT: 5432
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       postgres:
         condition: service_healthy
       kafka:
         condition: service_healthy
       eureka-server:
+        condition: service_healthy
+      zipkin:
         condition: service_healthy
 
   # ─── Inventory Service ───────────────────────────────────────────────────────
@@ -133,12 +153,16 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       eureka-server:
+        condition: service_healthy
+      zipkin:
         condition: service_healthy
 
   # ─── Booking Service ──────────────────────────────────────────────────────────
@@ -156,6 +180,8 @@ services:
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SERVICES_AUTH_SERVICE: http://auth-service:8081
       SERVICES_INVENTORY_SERVICE: http://inventory-service:8082
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,6 +190,8 @@ services:
       kafka:
         condition: service_healthy
       eureka-server:
+        condition: service_healthy
+      zipkin:
         condition: service_healthy
 
   # ─── Payment Service ──────────────────────────────────────────────────────────
@@ -175,8 +203,12 @@ services:
     environment:
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SERVICES_BOOKING_SERVICE: http://booking-service:8083
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       eureka-server:
+        condition: service_healthy
+      zipkin:
         condition: service_healthy
 
   # ─── Notification Service ─────────────────────────────────────────────────────
@@ -191,11 +223,13 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      MAIL_HOST: mailpit
-      MAIL_PORT: 1025
+      MAIL_HOST: smtp.gmail.com
+      MAIL_PORT: 587
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SERVICES_AUTH_SERVICE: http://auth-service:8081
       SERVICES_BOOKING_SERVICE: http://booking-service:8083
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       postgres:
         condition: service_healthy
@@ -204,6 +238,8 @@ services:
       kafka:
         condition: service_healthy
       eureka-server:
+        condition: service_healthy
+      zipkin:
         condition: service_healthy
 
 volumes:

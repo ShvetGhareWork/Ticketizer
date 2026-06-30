@@ -1070,6 +1070,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
         .animate-slide-in {
           animation: slideIn 0.3s ease-out forwards;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
       `}} />
     </AppContext.Provider>

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.Ticketizer.shared.dto.TicketNotificationEvent;
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,6 +22,7 @@ public class TicketNotificationListenerConsumer {
     private final StringRedisTemplate redisTemplate;
     private final NotificationRepository notificationRepository;
     private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${services.booking-service:http://localhost:8083}")
     private String bookingServiceUrl;
@@ -85,13 +87,14 @@ public class TicketNotificationListenerConsumer {
         topics = "otp-notifications",
         groupId = "ticket_notification_group"
     )
-    public void consumeOtpEvent(Map<String, String> payload, Acknowledgment acknowledgment) {
-        String email = payload.get("email");
-        String otp = payload.get("otp");
-        log.info("Received OTP Notification Event for email: {}", email);
+    public void consumeOtpEvent(String message) {
+        log.info("Received OTP Notification Event: {}", message);
         try {
+            Map<?, ?> payload = objectMapper.readValue(message, Map.class);
+            String email = (String) payload.get("email");
+            String otp = (String) payload.get("otp");
+            log.info("Processing OTP Notification for email: {}", email);
             emailService.sendOtpEmail(email, otp);
-            acknowledgment.acknowledge();
         } catch (Exception e) {
             log.error("Failed to process OTP notification", e);
         }
@@ -101,9 +104,10 @@ public class TicketNotificationListenerConsumer {
         topics = "notifications-topic",
         groupId = "ticket_notification_group"
     )
-    public void consumeCancellationEvent(Map<String, Object> payload, Acknowledgment acknowledgment) {
-        log.info("Received notification event on notifications-topic");
+    public void consumeCancellationEvent(String message) {
+        log.info("Received cancellation notification event: {}", message);
         try {
+            Map<?, ?> payload = objectMapper.readValue(message, Map.class);
             Long userId = ((Number) payload.get("userId")).longValue();
             String bookingRef = (String) payload.get("bookingReference");
             String eventTitle = (String) payload.get("eventTitle");
@@ -138,7 +142,6 @@ public class TicketNotificationListenerConsumer {
                     log.error("Failed to query user for cancellation email", ex);
                 }
             }
-            acknowledgment.acknowledge();
         } catch (Exception ex) {
             log.error("Failed to process cancellation notification", ex);
         }

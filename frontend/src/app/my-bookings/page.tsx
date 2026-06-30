@@ -36,10 +36,32 @@ export default function MyBookingsPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        const mapped = data.map((b: any) => {
-          let dateStr = b.startTime;
+        
+        // Group the bookings by title, start time, venue, status
+        const groups: { [key: string]: any[] } = {};
+        data.forEach((b: any) => {
+          const title = b.eventTitle || "";
+          const startTime = b.startTime || "";
+          const venue = b.venue || "";
+          const status = b.status || "";
+          const key = `${title}_${startTime}_${venue}_${status}`;
+          
+          if (!groups[key]) {
+            groups[key] = [];
+          }
+          groups[key].push(b);
+        });
+
+        const mapped = Object.keys(groups).map((key) => {
+          const groupList = groups[key];
+          const first = groupList[0];
+          
+          const refs = groupList.map((b) => b.bookingReference).filter(Boolean);
+          const combinedRefString = refs.join(",");
+
+          let dateStr = first.startTime;
           try {
-            const d = new Date(b.startTime);
+            const d = new Date(first.startTime);
             if (!isNaN(d.getTime())) {
               dateStr =
                 d.toLocaleDateString("en-US", {
@@ -59,24 +81,34 @@ export default function MyBookingsPage() {
             /* ignore */
           }
 
-          let finalImage = b.imageUrl;
+          let finalImage = first.imageUrl;
           if (!finalImage || finalImage.trim() === "") {
             finalImage =
               "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&q=80&w=400";
           }
 
+          const seatNumbers = groupList
+            .map((b) => b.seatNumber)
+            .filter(Boolean);
+          
+          const seatsLabel = seatNumbers.join(", ");
+          const hallName = first.hallName || "Main Hall";
+          const totalPrice = groupList.reduce((sum, b) => sum + (b.price || 150.0), 0);
+
           return {
-            id: b.bookingReference,
-            title: b.eventTitle,
+            id: combinedRefString, // Comma-joined list of IDs for View Ticket URL
+            bookingReferences: refs, // Array of individual references for loop cancellation
+            title: first.eventTitle,
             date: dateStr,
-            venue: b.venue,
-            seats: `${b.seatNumber} · ${b.hallName || "StandardSeating"}`,
-            price: `$${(b.price || 150.0).toFixed(2)} (₹${((b.price || 150.0) * 84).toFixed(0)})`,
-            status: b.status,
+            venue: first.venue,
+            seats: `${seatsLabel} · ${hallName}`,
+            price: `$${totalPrice.toFixed(2)} (₹${(totalPrice * 84).toFixed(0)})`,
+            status: first.status,
             image: finalImage,
-            rawStartTime: b.startTime,
+            rawStartTime: first.startTime,
           };
         });
+        
         setBookings(mapped);
       }
     } catch (err) {
@@ -100,15 +132,32 @@ export default function MyBookingsPage() {
     setCancelling(true);
     setMessage(null);
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/bookings/${selectedBookingForCancel.id}/cancel`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("authToken") || ""}`,
-        },
-      });
-      if (response.ok) {
-        setMessage({ text: "Ticket cancelled successfully. Your seat has been released.", type: "success" });
-        showToast("Ticket successfully cancelled. Seat released.", "success");
+      const refs = selectedBookingForCancel.bookingReferences;
+      let successCount = 0;
+      let lastError = "Failed to cancel ticket.";
+
+      for (const ref of refs) {
+        const response = await fetch(`http://localhost:8080/api/v1/bookings/${ref}/cancel`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("authToken") || ""}`,
+          },
+        });
+        if (response.ok) {
+          successCount++;
+        } else {
+          try {
+            const errorData = await response.json();
+            lastError = errorData.error || lastError;
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      }
+
+      if (successCount > 0) {
+        setMessage({ text: "Ticket(s) cancelled successfully. Your seat(s) have been released.", type: "success" });
+        showToast("Ticket(s) successfully cancelled. Seat(s) released.", "success");
         await fetchMyBookings();
         setTimeout(() => {
           setShowCancelModal(false);
@@ -116,9 +165,8 @@ export default function MyBookingsPage() {
           setMessage(null);
         }, 2000);
       } else {
-        const errorData = await response.json();
-        setMessage({ text: errorData.error || "Failed to cancel ticket.", type: "error" });
-        showToast(errorData.error || "Failed to cancel ticket.", "error");
+        setMessage({ text: lastError, type: "error" });
+        showToast(lastError, "error");
       }
     } catch (err) {
       setMessage({ text: "Failed to connect to backend server.", type: "error" });

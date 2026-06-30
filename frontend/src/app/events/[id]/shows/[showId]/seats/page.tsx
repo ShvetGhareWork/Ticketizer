@@ -41,6 +41,7 @@ export default function SeatSelectionPage() {
     isVerified,
     verifyOtp,
     resendOtp,
+    showToast,
   } = useApp();
 
   const [eventMeta, setEventMeta] = useState<{
@@ -49,6 +50,7 @@ export default function SeatSelectionPage() {
     city?: string;
   } | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [seatQuantity, setSeatQuantity] = useState<number | null>(null);
 
   // OTP Verification States
   const [otpCode, setOtpCode] = useState("");
@@ -259,7 +261,7 @@ export default function SeatSelectionPage() {
 
   const handleSeatClick = async (seatLabel: string) => {
     if (!authToken) {
-      alert("Please sign in or register to purchase and select seats.");
+      showToast("Please sign in or register to purchase and select seats.", "error");
       router.push("/auth/login");
       return;
     }
@@ -273,6 +275,43 @@ export default function SeatSelectionPage() {
         !activeAllocation?.seatLabels?.includes(seatLabel))
     ) {
       return;
+    }
+
+    const selectedSeatsList = activeAllocation?.seatLabels || [];
+    const isAlreadySelected = activeAllocation?.seatLabels?.includes(seatLabel);
+
+    if (!isAlreadySelected && seatQuantity !== null) {
+      const currentSelectedCount = selectedSeatsList.length;
+      if (currentSelectedCount >= seatQuantity) {
+        showToast(`You can only select up to ${seatQuantity} seats. Deselect a seat to select another.`, "warning");
+        return;
+      }
+
+      // Adjacent seat auto-selection
+      if (seatQuantity > 1 && currentSelectedCount === 0) {
+        const row = seatLabel.charAt(0);
+        const startCol = parseInt(seatLabel.slice(1), 10);
+        const seatsToSelect: string[] = [];
+
+        for (let i = 0; i < seatQuantity; i++) {
+          const nextCol = startCol + i;
+          const nextSeatLabel = `${row}${nextCol}`;
+          const nextSeat = seats[nextSeatLabel];
+
+          if (nextSeat && nextSeat.status === "AVAILABLE") {
+            seatsToSelect.push(nextSeatLabel);
+          } else {
+            break;
+          }
+        }
+
+        if (seatsToSelect.length === seatQuantity) {
+          for (const label of seatsToSelect) {
+            await selectSeat(label);
+          }
+          return;
+        }
+      }
     }
 
     await selectSeat(seatLabel);
@@ -361,6 +400,34 @@ export default function SeatSelectionPage() {
             </span>
           </div>
         </div>
+
+        {/* TICKET LIMIT STATUS BANNER */}
+        {seatQuantity !== null && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5 sm:p-4 mb-6 sm:mb-8 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm animate-in slide-in-from-top-4 duration-300">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+              <span className="text-xs sm:text-sm font-extrabold text-blue-900 uppercase tracking-wider">
+                Booking Target: {seatQuantity} Ticket{seatQuantity > 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest">
+                Selected: {selectedSeatsList.length} / {seatQuantity}
+              </span>
+              <button
+                onClick={async () => {
+                  for (const label of [...selectedSeatsList]) {
+                    await selectSeat(label);
+                  }
+                  setSeatQuantity(null);
+                }}
+                className="text-[9px] sm:text-[10px] font-extrabold text-blue-600 hover:text-blue-800 uppercase tracking-widest transition-colors cursor-pointer"
+              >
+                Change Quantity
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 12-COLUMN MAIN LAYOUT */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
@@ -805,6 +872,52 @@ export default function SeatSelectionPage() {
                 Sign out & cancel
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* TICKET QUANTITY SELECTION MODAL */}
+      {mounted && seatQuantity === null && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-300">
+          <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-w-sm w-full text-center relative overflow-hidden">
+            {/* Background decorative gradient */}
+            <div className="absolute -top-10 -left-10 w-40 h-40 bg-blue-100 rounded-full blur-3xl opacity-50 pointer-events-none"></div>
+            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-blue-200 rounded-full blur-3xl opacity-30 pointer-events-none"></div>
+
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-100 relative z-10">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 9a3 3 0 0 1 0-6h20a3 3 0 0 1 0 6V8a2 2 0 0 0 2 2v4a2 2 0 0 0-2 2v1a3 3 0 0 1 0 6H2a3 3 0 0 1 0-6v-1a2 2 0 0 0-2-2v-4a2 2 0 0 0 2-2z"/>
+                <path d="M12 9v6"/>
+                <path d="M9 12h6"/>
+              </svg>
+            </div>
+            
+            <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-2 tracking-tight relative z-10">
+              HOW MANY TICKETS?
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-500 mb-6 leading-relaxed font-medium relative z-10">
+              Select the number of tickets you wish to purchase.<br />
+              <span className="font-bold text-blue-600">Maximum 5 tickets allowed per transaction.</span>
+            </p>
+
+            <div className="flex justify-center gap-2.5 sm:gap-3 mb-6 relative z-10">
+              {[1, 2, 3, 4, 5].map((num) => (
+                <button
+                  key={`qty-${num}`}
+                  onClick={() => setSeatQuantity(num)}
+                  className="w-10 h-10 sm:w-12 sm:h-12 bg-[#F0F4F8] hover:bg-blue-600 hover:text-white text-gray-900 border border-gray-200 hover:border-blue-600 rounded-xl font-extrabold text-sm sm:text-base flex items-center justify-center transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => router.push("/events")}
+              className="text-xs font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest block mx-auto cursor-pointer"
+            >
+              Cancel & go back
+            </button>
           </div>
         </div>
       )}

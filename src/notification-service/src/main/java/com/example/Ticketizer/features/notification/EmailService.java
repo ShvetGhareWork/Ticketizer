@@ -189,7 +189,7 @@ public class EmailService {
                 event.userName(),
                 cleanedTitle,
                 event.bookingId(),
-                event.StartTime(),
+                event.startTime(),
                 seatsHtml.toString(),
                 qrHtml.toString()
             );

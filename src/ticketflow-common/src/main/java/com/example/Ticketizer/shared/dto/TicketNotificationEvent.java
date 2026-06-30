@@ -6,6 +6,6 @@ public record TicketNotificationEvent(
     String userName,
     String showTitle,
     String seatNumber,
-    String StartTime,
+    String startTime,
     String qrCodeBase64
 ) {}
