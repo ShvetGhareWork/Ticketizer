@@ -4,6 +4,7 @@ import jakarta.mail.internet.MimeMessage;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.example.Ticketizer.shared.dto.TicketNotificationEvent;
@@ -18,6 +19,7 @@ public class EmailService {
         this.mailSender = mailSender;
     }
 
+    @Async("emailTaskExecutor")
     public void sendTicketConfrimationEmail(TicketNotificationEvent event) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -235,8 +237,8 @@ public class EmailService {
         }
     }
 
+    @Async("emailTaskExecutor")
     public void sendOtpEmail(String recipientEmail, String otp) {
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
                 MimeMessage message = mailSender.createMimeMessage();
                 MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -258,9 +260,9 @@ public class EmailService {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        });
     }
-
+    
+    @Async("emailTaskExecutor")
     public void sendTicketCancellationEmail(
             String recipientEmail,
             String userName,

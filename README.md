@@ -128,6 +128,99 @@ sequenceDiagram
 | **Expired Seat Holds**         | CRON polling job                         | Redis TTL + Keyspace Notifications (`notify-keyspace-events Ex`).      |
 | **Payment vs. Expiry Race**    | Application-level checks                 | Optimistic Locking (`@Version`) on the DB Booking entities.            |
 | **Poison-Pill Messages**       | Block Kafka partition                    | Dead Letter Queue (`ticket-reservations-dlq`) + Custom Error Handlers. |
+| **Blocking Email Dispatch**    | Synchronous SMTP call on request thread  | `@Async` + dedicated `ThreadPoolTaskExecutor` — fire-and-forget.       |
+| **Sequential Janitor Sweeps**  | One-by-one booking expiry cleanup        | `@Async` on `reconcileExpiredBooking` — parallel evictions per sweep.  |
+| **Serial Cache Warm-up**       | Single show warmed up at startup         | `CompletableFuture.allOf` — all shows warmed in parallel on boot.      |
+| **Single Kafka Consumer**      | One thread per listener container        | `setConcurrency(3)` — multiple partition threads per container.        |
+
+---
+
+## Multi-threading & Async Architecture
+
+Ticketizer applies structured concurrency across three services to eliminate blocking bottlenecks and maximize throughput under flash-sale traffic:
+
+### 1. Asynchronous Email Dispatching (`notification-service`)
+
+**Problem**: SMTP calls to the mail server are slow network I/O. Without async execution, the Kafka consumer thread blocks for the entire duration of the email send, halting ingestion of new events.
+
+**Solution**: A dedicated `ThreadPoolTaskExecutor` named `emailTaskExecutor` is registered in `AsyncConfig`. The three email methods in `EmailService` are annotated with `@Async("emailTaskExecutor")`, causing Spring's AOP proxy to hand off email work immediately to a background thread and free the Kafka listener thread.
+
+```
+Kafka Listener Thread  →  consumeTicketEvent()  →  hands off →  EmailExecutor-1
+                                ↓ returns immediately
+                          acknowledgment.acknowledge()
+```
+
+**Thread Pool Configuration**:
+| Property        | Value |
+| :-------------- | :---- |
+| Core Pool Size  | 5     |
+| Max Pool Size   | 20    |
+| Queue Capacity  | 500   |
+| Thread Prefix   | `EmailExecutor-` |
+
+> **Note**: Since email dispatch crosses a Spring bean boundary (from `TicketNotificationListenerConsumer` into `EmailService`), the AOP proxy intercepts the call correctly. Self-invocation is not an issue here.
+
+---
+
+### 2. Parallel Janitor Eviction Sweeps (`booking-service`)
+
+**Problem**: The `ReservationJanitor` scheduled task runs every 10 seconds to clean up expired bookings. Each eviction involves a database write, an HTTP call to `inventory-service`, and a Redis key deletion. Processing them sequentially on the scheduler thread delays subsequent sweeps when many bookings expire simultaneously.
+
+**Solution**: `reconcileExpiredBooking(Long bookingId)` is annotated with `@Async("janitorTaskExecutor")`. Because the janitor calls this method via the Spring-injected `self` proxy (not `this`), the AOP proxy correctly intercepts the call and dispatches each eviction to a background worker thread concurrently.
+
+```
+Scheduler Thread  →  sweepExpiredReservations()
+                         ├── self.reconcileExpiredBooking(1L)  →  JanitorExecutor-1
+                         ├── self.reconcileExpiredBooking(2L)  →  JanitorExecutor-2
+                         └── self.reconcileExpiredBooking(3L)  →  JanitorExecutor-3
+                         ↓ returns immediately, scheduler is free
+```
+
+**Thread Pool Configuration**:
+| Property        | Value |
+| :-------------- | :---- |
+| Core Pool Size  | 5     |
+| Max Pool Size   | 15    |
+| Queue Capacity  | 100   |
+| Thread Prefix   | `JanitorExecutor-` |
+
+---
+
+### 3. Parallel Inventory Cache Warm-up (`inventory-service`)
+
+**Problem**: On startup, the `InventoryWarmUpWorker` must load all available seat IDs from PostgreSQL into Redis for every show. Running shows sequentially delays application readiness and leaves some shows without a warm cache during the startup window.
+
+**Solution**: `InventoryWarmUpWorker.run()` now fetches all shows from `ShowRepository` and submits a `CompletableFuture.runAsync` task per show using the `warmUpTaskExecutor`. `CompletableFuture.allOf(...).join()` then blocks the main thread until every show's cache is populated before the application is marked ready.
+
+```
+[main]         Starting concurrent cache warm-up for all shows...
+[WarmUp-1]     Starting warm-up task for Show ID: 1
+[WarmUp-2]     Starting warm-up task for Show ID: 2
+[WarmUp-3]     Starting warm-up task for Show ID: 3
+[WarmUp-3]     Cache Warm-up complete. Staged 72 seats for Show ID: 3
+[WarmUp-2]     Cache Warm-up complete. Staged 180 seats for Show ID: 2
+[WarmUp-1]     Cache Warm-up complete. Staged 336 seats for Show ID: 1
+[main]         All parallel cache warm-up tasks completed successfully!
+```
+
+**Thread Pool Configuration**:
+| Property        | Value |
+| :-------------- | :---- |
+| Core Pool Size  | 4     |
+| Max Pool Size   | 10    |
+| Queue Capacity  | 50    |
+| Thread Prefix   | `WarmUpExecutor-` |
+
+---
+
+### 4. Concurrent Kafka Consumers (`booking-service`)
+
+**Problem**: By default, `ConcurrentKafkaListenerContainerFactory` uses a single consumer thread. Under heavy reservation traffic, a single thread creates a processing bottleneck as Kafka partition lag grows.
+
+**Solution**: `factory.setConcurrency(3)` is set on `kafkaListenerContainerFactory` in `booking-service`. Spring Kafka spins up 3 independent listener threads, each assigned to a distinct partition. This triples the ingestion throughput of the `ticket-reservations` topic.
+
+> **Note**: Ensure your Kafka topic has **at least as many partitions as the concurrency level** for full utilisation. With `KAFKA_AUTO_CREATE_TOPICS_ENABLE: true`, partitions default to 1 unless pre-created.
 
 ---
 
