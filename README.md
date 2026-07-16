@@ -3,7 +3,7 @@
 <h1>Ticketizer</h1>
 
 <p><em>High-concurrency distributed ticket booking engine built on a Spring Cloud microservices architecture — engineered to handle massive flash-sale traffic without overselling a single seat.</em></p>
-
+ 
 [![Java](https://img.shields.io/badge/Java_21-ED8B00?style=flat-square&logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot_3.3-6DB33F?style=flat-square&logo=spring&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Spring Cloud](https://img.shields.io/badge/Spring_Cloud_2023-6DB33F?style=flat-square&logo=spring&logoColor=white)](https://spring.io/projects/spring-cloud)
